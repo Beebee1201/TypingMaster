@@ -379,6 +379,14 @@
       font-size: 0.92rem;
     }
 
+    .version-tag {
+      margin-top: 10px;
+      text-align: center;
+      color: rgba(236, 243, 255, 0.62);
+      font-size: 0.8rem;
+      letter-spacing: 0.3px;
+    }
+
     .floating-text {
       position: absolute;
       z-index: 9;
@@ -733,6 +741,7 @@
       Fire：穩定輸出，Bolt：爆發，Slash：快攻，Heal：回血，Guard：護盾。<br>
       每 5 隻會出 Boss；按 Esc 可暫停。限時模式為 2:30，選技能時會停錶。
     </div>
+    <div class="version-tag">Version v1.0.1</div>
   </div>
 
   <div id="setupOverlay" class="overlay show">
@@ -861,6 +870,8 @@
     const STORAGE_KEY = "typing_battle_rankings_json_v2";
     const CONFIG_KEY = "typing_battle_rankings_config_v1";
     const TIMED_LIMIT_MS = 150000;
+    const XP_INITIAL_REQUIREMENT = 90;
+    const XP_GROWTH_PER_LEVEL = 30;
     const FIREBASE_DB_BASE_URL = "https://typing-master-6ece2-default-rtdb.asia-southeast1.firebasedatabase.app/";
     const FIREBASE_LEADERBOARD_PATH = "typing-battle/leaderboard";
     const FIREBASE_DEFAULT_JSON_URL = `${FIREBASE_DB_BASE_URL}${FIREBASE_LEADERBOARD_PATH}.json`;
@@ -902,7 +913,7 @@
       ultGainMul: 1,
       level: 1,
       xp: 0,
-      xpToNext: 100
+      xpToNext: XP_INITIAL_REQUIREMENT
     };
 
     const enemy = {
@@ -1469,7 +1480,7 @@
       while (player.xp >= player.xpToNext) {
         player.xp -= player.xpToNext;
         player.level += 1;
-        player.xpToNext += 36;
+        player.xpToNext += XP_GROWTH_PER_LEVEL;
         sfxLevel();
         openTalentSelection();
       }
@@ -1950,7 +1961,7 @@
       player.ult = 0;
       player.level = 1;
       player.xp = 0;
-      player.xpToNext = 100;
+      player.xpToNext = XP_INITIAL_REQUIREMENT;
     }
 
     function startGame() {
