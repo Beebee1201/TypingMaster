@@ -1,4 +1,4 @@
-﻿const HEROES = [
+const HEROES = [
       { id: "mage", name: "Arc Mage", emoji: "🧙", desc: "平衡輸出，奧義累積快", hp: 100, dmg: 12, crit: 0.12, shield: 50, ultGainMul: 1.15 },
       { id: "knight", name: "Spell Knight", emoji: "🛡️", desc: "高生存，長線穩定", hp: 128, dmg: 10, crit: 0.1, shield: 74, ultGainMul: 1.0 },
       { id: "assassin", name: "Rune Assassin", emoji: "⚔️", desc: "高暴擊，連擊成長快", hp: 92, dmg: 13, crit: 0.18, shield: 40, ultGainMul: 1.0 }
@@ -21,9 +21,9 @@
     ];
 
     const BOSSES = [
-      { id: "demon-lord", name: "Demon Lord", emoji: "😈", hpMul: 1.35, dmgMul: 1.2, ai: { bossMeteor: 0.34, heavy: 0.25, break: 0.15, drain: 0.12, quick: 0.14 } },
-      { id: "sky-dragon", name: "Sky Dragon", emoji: "🐉", hpMul: 1.3, dmgMul: 1.22, ai: { bossMeteor: 0.3, quick: 0.23, heavy: 0.22, poison: 0.25 } },
-      { id: "void-king", name: "Void King", emoji: "👑", hpMul: 1.42, dmgMul: 1.16, ai: { bossMeteor: 0.26, interrupt: 0.25, heavy: 0.24, drain: 0.25 } }
+      { id: "demon-lord", name: "Demon Lord", emoji: "😈", hpMul: 1.22, dmgMul: 1.08, ai: { bossMeteor: 0.22, heavy: 0.22, break: 0.14, drain: 0.12, quick: 0.3 } },
+      { id: "sky-dragon", name: "Sky Dragon", emoji: "🐉", hpMul: 1.18, dmgMul: 1.1, ai: { bossMeteor: 0.2, quick: 0.3, heavy: 0.2, poison: 0.3 } },
+      { id: "void-king", name: "Void King", emoji: "👑", hpMul: 1.26, dmgMul: 1.06, ai: { bossMeteor: 0.18, interrupt: 0.2, heavy: 0.2, drain: 0.2, quick: 0.22 } }
     ];
 
     const TALENTS = [
@@ -710,9 +710,9 @@
       floatText($("enemyChar"), isCrit ? `CRIT -${amount}` : `-${amount}`, isCrit ? "crit-gold" : "damage-red");
       if (isCrit) sfxCrit();
       else sfxHit();
-      if (enemy.isBoss && !enemy.enrage && enemy.hp <= enemy.maxHp * 0.45) {
+      if (enemy.isBoss && !enemy.enrage && enemy.hp <= enemy.maxHp * 0.3) {
         enemy.enrage = true;
-        enemy.castSpeedMul = 1.28;
+        enemy.castSpeedMul = 1.16;
         setMessage(`Boss ${enemy.name} 進入狂暴，攻勢加速。`);
       }
     }
@@ -940,12 +940,12 @@
       updateUI();
     }
 
-    function enemyAttackHeavy() { setIntent("heavy", "Dark Nova", Math.max(760, (enemy.isBoss ? 1180 : 1450) / enemy.castSpeedMul)); }
+    function enemyAttackHeavy() { setIntent("heavy", "Dark Nova", Math.max(760, (enemy.isBoss ? 1320 : 1450) / enemy.castSpeedMul)); }
     function enemyAttackPoison() { setIntent("poison", "Venom Burst", Math.max(760, 1250 / enemy.castSpeedMul)); }
     function enemyAttackDrain() { setIntent("drain", "Soul Drain", Math.max(700, 1220 / enemy.castSpeedMul)); }
     function enemyAttackBreak() { setIntent("break", "Shield Shatter", Math.max(720, 1180 / enemy.castSpeedMul)); }
     function enemyAttackInterrupt() { setIntent("interrupt", "Mind Spike", Math.max(700, 1150 / enemy.castSpeedMul)); }
-    function enemyAttackBossMeteor() { setIntent("bossMeteor", "Apocalypse Rain", Math.max(850, 1500 / enemy.castSpeedMul)); }
+    function enemyAttackBossMeteor() { setIntent("bossMeteor", "Apocalypse Rain", Math.max(900, 1700 / enemy.castSpeedMul)); }
 
     function resolveEnemyIntent() {
       if (!enemy.intent || game.over) return;
@@ -970,7 +970,7 @@
           if (game.over) return;
           damagePlayer(enemy.damageBase + 6 + rand(4), `${enemy.name} 的毒爆命中。`);
           resetCombo("毒爆讓你斷連。");
-          let ticks = enemy.isBoss ? 4 : 3;
+          let ticks = enemy.isBoss ? 3 : 3;
           const timer = setInterval(() => {
             if (game.over || ticks <= 0) { clearInterval(timer); return; }
             ticks--;
@@ -987,7 +987,7 @@
           if (game.over) return;
           const dmg = enemy.damageBase + 7 + rand(5);
           damagePlayer(dmg, `${enemy.name} 吸取你的生命。`);
-          const heal = Math.floor(dmg * (enemy.isBoss ? 0.55 : 0.38));
+          const heal = Math.floor(dmg * (enemy.isBoss ? 0.42 : 0.38));
           enemy.hp = clamp(enemy.hp + heal, 0, enemy.maxHp);
           floatText($("enemyChar"), `+${heal}`, "heal-green");
           resetCombo("生命吸取破壞了你的節奏。");
@@ -999,7 +999,7 @@
         spawnSlash("enemyChar", "playerChar");
         setTimeout(() => {
           if (game.over) return;
-          applyShieldBreak(enemy.isBoss ? 8 : 4);
+          applyShieldBreak(enemy.isBoss ? 5 : 4);
           damagePlayer(enemy.damageBase + 5 + rand(4), `${enemy.name} 使用破盾斬。`);
           resetCombo("護盾被破壞，連擊中斷。");
           updateUI();
@@ -1025,7 +1025,7 @@
         animateChar("enemyChar", "attack-backward");
         setTimeout(() => {
           if (game.over) return;
-          const dmg = enemy.damageBase + 18 + rand(10) + Math.floor(enemy.level * 1.45);
+          const dmg = enemy.damageBase + 14 + rand(8) + Math.floor(enemy.level * 1.15);
           damagePlayer(dmg, `Boss ${enemy.name} 施放 Apocalypse Rain。`);
           resetCombo("Boss 大招打碎了連擊。");
           updateUI();
@@ -1073,8 +1073,8 @@
       else enemyAttackBasic();
 
       const baseCd = game.mode === "timed"
-        ? (enemy.isBoss ? 1980 : 2420)
-        : (enemy.isBoss ? 1760 : 2200);
+        ? (enemy.isBoss ? 2280 : 2420)
+        : (enemy.isBoss ? 2060 : 2200);
       const progressSpeed = game.mode === "timed"
         ? Math.min(700, game.wave * 23)
         : Math.min(840, game.wave * 28);
@@ -1121,8 +1121,8 @@
       enemy.hp = enemy.maxHp;
       enemy.intent = null;
       const baseCd = game.mode === "timed"
-        ? (enemy.isBoss ? 1980 : 2420)
-        : (enemy.isBoss ? 1760 : 2200);
+        ? (enemy.isBoss ? 2280 : 2420)
+        : (enemy.isBoss ? 2060 : 2200);
       const progressSpeed = game.mode === "timed"
         ? Math.min(700, game.wave * 23)
         : Math.min(840, game.wave * 28);
