@@ -80,6 +80,14 @@
       margin-bottom: 14px;
     }
 
+    .main-menu-row {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
     .card-panel {
       border-radius: 16px;
       border: 1px solid var(--panel-border);
@@ -116,6 +124,17 @@
     .char-emoji { font-size: 1.9rem; }
     .char-name { font-weight: 700; margin-top: 4px; }
     .char-desc { color: var(--muted); font-size: 0.82rem; margin-top: 2px; }
+    .char-unique {
+      margin-top: 6px;
+      color: #bfdbfe;
+      font-size: 0.76rem;
+      line-height: 1.4;
+      text-align: left;
+      padding: 6px 7px;
+      border-radius: 8px;
+      border: 1px solid rgba(191, 219, 254, 0.35);
+      background: rgba(30, 58, 138, 0.22);
+    }
 
     .mode-tabs { display: flex; gap: 8px; margin-bottom: 10px; }
     .mode-chip {
@@ -538,6 +557,13 @@
 
     .talent-card:hover { transform: translateY(-3px); background: rgba(255, 255, 255, 0.13); }
 
+    .hero-preview-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+
     .setup-grid {
       margin-top: 10px;
       display: grid;
@@ -602,12 +628,12 @@
     }
 
     @media (max-width: 980px) {
-      .menu-row { grid-template-columns: 1fr; }
       .battlefield { flex-direction: column; align-items: center; }
       .fighter-area { width: 100%; }
       .status-grid { grid-template-columns: repeat(3, 1fr); }
       .talent-grid { grid-template-columns: 1fr; }
       .setup-grid { grid-template-columns: 1fr; }
+      .hero-preview-grid { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 640px) {
@@ -625,21 +651,9 @@
       <p>打字施法、衝分挑戰。支援限時模式與無盡模式獨立排行榜。</p>
     </div>
 
-    <div class="menu-row">
-      <div class="card-panel">
-        <div class="panel-title">英雄選擇</div>
-        <div id="characterSelect" class="char-grid"></div>
-      </div>
-
-      <div class="card-panel">
-        <div class="panel-title">排行榜</div>
-        <div class="mode-tabs">
-          <div id="timedBoardChip" class="mode-chip active" data-board-mode="timed">限時模式</div>
-          <div id="endlessBoardChip" class="mode-chip" data-board-mode="endless">無盡模式</div>
-        </div>
-        <ol id="leaderboardList" class="leaderboard-list"></ol>
-        <div class="small-muted mt-2">排行榜以 JSON 結構儲存，可接遠端 JSON API 共享給朋友。</div>
-      </div>
+    <div class="main-menu-row">
+      <button id="openHeroMenuBtn" class="btn btn-outline-info">英雄選擇</button>
+      <button id="openLeaderboardMenuBtn" class="btn btn-outline-warning">排行榜 / 同步</button>
     </div>
 
     <div class="battlefield">
@@ -713,7 +727,6 @@
       <button id="pauseBtn" class="btn btn-warning">暫停</button>
       <button id="restartBtn" class="btn btn-outline-light">重新開始</button>
       <button id="soundBtn" class="btn btn-info">音效：開</button>
-      <button id="syncBtn" class="btn btn-outline-info">同步排行榜</button>
     </div>
 
     <div class="tip-list">
@@ -745,6 +758,33 @@
         <button id="saveSetupBtn" class="btn btn-success">儲存設定</button>
         <button id="closeSetupBtn" class="btn btn-outline-light">關閉</button>
         <span id="connBadge" class="conn-badge">目前使用本機 JSON</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="heroOverlay" class="overlay">
+    <div class="overlay-card">
+      <h3>選擇英雄</h3>
+      <div class="small-muted">戰鬥中不能更換英雄。</div>
+      <div id="characterSelect" class="hero-preview-grid"></div>
+      <div class="d-flex justify-content-end mt-3">
+        <button id="closeHeroOverlayBtn" class="btn btn-outline-light">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="leaderboardOverlay" class="overlay">
+    <div class="overlay-card">
+      <h3>排行榜</h3>
+      <div class="small-muted">按下主選單「排行榜 / 同步」會自動同步最新資料。</div>
+      <div class="mode-tabs mt-2">
+        <div id="timedBoardChip" class="mode-chip active" data-board-mode="timed">限時模式</div>
+        <div id="endlessBoardChip" class="mode-chip" data-board-mode="endless">無盡模式</div>
+      </div>
+      <ol id="leaderboardList" class="leaderboard-list"></ol>
+      <div class="small-muted mt-2">排行榜以 JSON 結構儲存，並同步至 Firebase。</div>
+      <div class="d-flex justify-content-end mt-3">
+        <button id="closeLeaderboardOverlayBtn" class="btn btn-outline-light">關閉</button>
       </div>
     </div>
   </div>
@@ -802,6 +842,21 @@
       { id: "ultUp", name: "Arcane Battery", desc: "奧義值 +25" },
       { id: "comboUp", name: "Combo Engine", desc: "連擊傷害成長提升" }
     ];
+
+    const HERO_UNIQUE_SKILLS = {
+      mage: {
+        normal: "Arc Overload: 雷系附加追擊閃電",
+        ultimate: "Astral Cataclysm: 流星強化、段數更多"
+      },
+      knight: {
+        normal: "Fortress Guard: 防禦時額外護盾並小量回血",
+        ultimate: "Aegis Judgment: 奧義同時給護盾與回復"
+      },
+      assassin: {
+        normal: "Shadow Combo: 斬擊暴擊更高且追擊更容易",
+        ultimate: "Phantom Execution: 高爆發多段斬擊"
+      }
+    };
 
     const STORAGE_KEY = "typing_battle_rankings_json_v2";
     const CONFIG_KEY = "typing_battle_rankings_config_v1";
@@ -1240,10 +1295,19 @@
       const box = $("characterSelect");
       box.innerHTML = "";
       HEROES.forEach((hero) => {
+        const unique = HERO_UNIQUE_SKILLS[hero.id];
         const card = document.createElement("div");
         card.className = `char-option${hero.id === game.selectedHero.id ? " active" : ""}`;
         card.dataset.id = hero.id;
-        card.innerHTML = `<div class="char-emoji">${hero.emoji}</div><div class="char-name">${hero.name}</div><div class="char-desc">${hero.desc}</div>`;
+        card.innerHTML = `
+          <div class="char-emoji">${hero.emoji}</div>
+          <div class="char-name">${hero.name}</div>
+          <div class="char-desc">${hero.desc}</div>
+          <div class="char-unique">
+            <div>一般：${unique ? unique.normal : "無"}</div>
+            <div>奧義：${unique ? unique.ultimate : "無"}</div>
+          </div>
+        `;
         card.onclick = () => {
           if (game.started && !game.over) return;
           applyHero(hero);
@@ -1269,9 +1333,19 @@
 
     function chooseSkillType() {
       if (player.ult >= 100) return "ultimate";
-      const pool = ["fire", "fire", "slash", "slash", "bolt", "bolt", "heal", "guard", "fire", "slash"];
+
+      const heroId = game.selectedHero.id;
+      const pool = ["fire", "fire", "slash", "slash", "bolt", "bolt", "guard", "fire", "slash"];
+
+      // Only allow heal prompts when HP is not full.
+      if (player.hp < player.maxHp) pool.push("heal");
       if (player.hp <= player.maxHp * 0.45) pool.push("heal", "heal");
       if (player.shield <= 8) pool.push("guard");
+
+      if (heroId === "mage") pool.push("bolt");
+      if (heroId === "knight") pool.push("guard");
+      if (heroId === "assassin") pool.push("slash");
+
       return choice(pool);
     }
 
@@ -1494,6 +1568,7 @@
     function castSpell() {
       if (!game.prompt || game.over || game.waitingSpawn) return;
       const { type, word } = game.prompt;
+      const heroId = game.selectedHero.id;
       let scoreGain = 8;
       let critResult = false;
       animateChar("playerChar", "attack-forward");
@@ -1510,30 +1585,45 @@
 
       if (type === "bolt") {
         spawnLightning("enemyChar");
-        const r = calcDamage(player.baseDamage + 10, 2.0);
+        const r = calcDamage(player.baseDamage + 10 + (heroId === "mage" ? 4 : 0), heroId === "mage" ? 2.15 : 2.0);
         damageEnemy(r.damage, r.isCrit);
         critResult = r.isCrit;
         player.ult += 18 * player.ultGainMul;
         scoreGain = r.damage + 4;
-        setMessage(`${word.toUpperCase()} 雷擊爆發。`);
+        if (heroId === "mage") {
+          setTimeout(() => {
+            if (game.over || enemy.hp <= 0) return;
+            spawnLightning("enemyChar");
+            const extra = calcDamage(player.baseDamage + 5, 1.35);
+            damageEnemy(extra.damage, extra.isCrit);
+            updateUI();
+            if (enemy.hp <= 0) onEnemyDefeated();
+          }, 120);
+          setMessage(`${word.toUpperCase()} 觸發 Arc Overload 追擊閃電。`);
+        } else {
+          setMessage(`${word.toUpperCase()} 雷擊爆發。`);
+        }
       }
 
       if (type === "slash") {
         spawnSlash("playerChar", "enemyChar");
-        const first = calcDamage(player.baseDamage + 4, 1.5);
+        const first = calcDamage(player.baseDamage + 4 + (heroId === "assassin" ? 3 : 0), heroId === "assassin" ? 1.75 : 1.5);
         damageEnemy(first.damage, first.isCrit);
         critResult = first.isCrit;
         player.ult += 14 * player.ultGainMul;
         scoreGain = first.damage;
-        if (Math.random() < 0.35) {
+        const followUpChance = heroId === "assassin" ? 0.55 : 0.35;
+        if (Math.random() < followUpChance) {
           setTimeout(() => {
             if (game.over || enemy.hp <= 0) return;
-            const second = calcDamage(8 + Math.floor(player.level / 4), 1.35);
+            const second = calcDamage(8 + Math.floor(player.level / 4) + (heroId === "assassin" ? 2 : 0), heroId === "assassin" ? 1.55 : 1.35);
             damageEnemy(second.damage, second.isCrit);
             updateUI();
             if (enemy.hp <= 0) onEnemyDefeated();
           }, 120);
-          setMessage(`${word.toUpperCase()} 觸發追擊。`);
+          setMessage(heroId === "assassin"
+            ? `${word.toUpperCase()} 觸發 Shadow Combo 追擊。`
+            : `${word.toUpperCase()} 觸發追擊。`);
         } else {
           setMessage(`${word.toUpperCase()} 斬擊命中。`);
         }
@@ -1547,24 +1637,45 @@
       }
 
       if (type === "guard") {
-        addShield(18 + Math.floor(game.combo * 1.35));
+        addShield(18 + Math.floor(game.combo * 1.35) + (heroId === "knight" ? 10 : 0));
+        if (heroId === "knight") {
+          healPlayer(0.08, 0);
+        }
         player.ult += 8 * player.ultGainMul;
         scoreGain = 10;
-        setMessage(`${word.toUpperCase()} 建立護盾。`);
+        setMessage(heroId === "knight"
+          ? `${word.toUpperCase()} 啟動 Fortress Guard（護盾+回血）。`
+          : `${word.toUpperCase()} 建立護盾。`);
       }
 
       if (type === "ultimate") {
         sfxUltimate();
-        spawnMeteorStorm("enemyChar", enemy.isBoss ? 6 : 4);
+        const meteorCount = heroId === "mage"
+          ? (enemy.isBoss ? 8 : 6)
+          : (enemy.isBoss ? 6 : 4);
+        spawnMeteorStorm("enemyChar", meteorCount);
         player.ult = 0;
-        scoreGain = 86;
-        setMessage(`${word.toUpperCase()} 召喚流星雨。`);
+        scoreGain = heroId === "assassin" ? 96 : 86;
+        if (heroId === "mage") setMessage(`${word.toUpperCase()} 啟動 Astral Cataclysm。`);
+        else if (heroId === "knight") setMessage(`${word.toUpperCase()} 啟動 Aegis Judgment。`);
+        else if (heroId === "assassin") setMessage(`${word.toUpperCase()} 啟動 Phantom Execution。`);
+        else setMessage(`${word.toUpperCase()} 召喚流星雨。`);
         setTimeout(() => {
           if (game.over) return;
           let total = 0;
-          const hits = enemy.isBoss ? 4 : 3;
+          const hits = heroId === "assassin"
+            ? (enemy.isBoss ? 5 : 4)
+            : heroId === "mage"
+              ? (enemy.isBoss ? 5 : 4)
+              : (enemy.isBoss ? 4 : 3);
           for (let i = 0; i < hits; i++) {
-            total += calcDamage(player.baseDamage + 18, 1.56).damage;
+            const base = player.baseDamage + 18 + (heroId === "assassin" ? 4 : 0) + (heroId === "mage" ? 2 : 0);
+            const critMul = heroId === "assassin" ? 1.72 : 1.56;
+            total += calcDamage(base, critMul).damage;
+          }
+          if (heroId === "knight") {
+            addShield(18 + Math.floor(player.level * 0.8));
+            healPlayer(0.12, 0);
           }
           damageEnemy(total, true);
           updateUI();
@@ -1866,6 +1977,8 @@
       $("enemyChar").classList.remove("char-dead", "boss-aura");
       $("talentOverlay").classList.remove("show");
       $("pauseOverlay").classList.remove("show");
+      $("heroOverlay").classList.remove("show");
+      $("leaderboardOverlay").classList.remove("show");
 
       spawnEnemy();
       setMessage(game.mode === "timed" ? `戰鬥開始，${game.playerName}。限時 2:30！` : `戰鬥開始，${game.playerName}。無盡模式挑戰極限！`);
@@ -1915,6 +2028,8 @@
       $("feverBanner").innerHTML = "";
       $("talentOverlay").classList.remove("show");
       $("pauseOverlay").classList.remove("show");
+      $("heroOverlay").classList.remove("show");
+      $("leaderboardOverlay").classList.remove("show");
       setMessage("先輸入玩家名稱並選擇模式後開始。");
       updateUI();
       cancelAnimationFrame(game.loopId);
@@ -2048,7 +2163,20 @@
       updateUI();
     });
 
-    $("syncBtn").addEventListener("click", async () => { await syncLeaderboard(); });
+    $("openHeroMenuBtn").addEventListener("click", () => {
+      $("heroOverlay").classList.add("show");
+    });
+    $("closeHeroOverlayBtn").addEventListener("click", () => {
+      $("heroOverlay").classList.remove("show");
+    });
+
+    $("openLeaderboardMenuBtn").addEventListener("click", async () => {
+      $("leaderboardOverlay").classList.add("show");
+      await syncLeaderboard();
+    });
+    $("closeLeaderboardOverlayBtn").addEventListener("click", () => {
+      $("leaderboardOverlay").classList.remove("show");
+    });
 
     document.querySelectorAll("[data-board-mode]").forEach((chip) => {
       chip.addEventListener("click", async () => {
