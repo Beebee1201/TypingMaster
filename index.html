@@ -1475,7 +1475,9 @@
       game.kills += 1;
       game.score += enemy.isBoss ? 180 : 55;
       $("enemyChar").classList.add("char-dead");
-      const healPct = enemy.isBoss ? 0.3 : 0.18;
+      const healPct = game.mode === "timed"
+        ? (enemy.isBoss ? 0.36 : 0.24)
+        : (enemy.isBoss ? 0.3 : 0.18);
       healPlayer(healPct);
       player.ult = clamp(player.ult + (enemy.isBoss ? 26 : 15), 0, 100);
       giveXp(enemy.isBoss ? 84 : 36);
@@ -1765,31 +1767,40 @@
       else if (action === "bossMeteor") enemyAttackBossMeteor();
       else enemyAttackBasic();
 
-      const baseCd = enemy.isBoss ? 1760 : 2200;
-      const progressSpeed = Math.min(840, game.wave * 28);
+      const baseCd = game.mode === "timed"
+        ? (enemy.isBoss ? 1980 : 2420)
+        : (enemy.isBoss ? 1760 : 2200);
+      const progressSpeed = game.mode === "timed"
+        ? Math.min(700, game.wave * 23)
+        : Math.min(840, game.wave * 28);
       enemy.cooldownMax = Math.max(760, (baseCd - progressSpeed) / enemy.castSpeedMul);
       enemy.cooldown = enemy.cooldownMax;
     }
 
     function getEnemyPowerScale() {
-      const base = 1 + game.kills * 0.055;
+      const base = game.mode === "timed"
+        ? (1 + game.kills * 0.045)
+        : (1 + game.kills * 0.055);
       return game.mode === "endless" ? base + player.level * 0.03 : base;
     }
 
     function spawnEnemy() {
-      const isBoss = game.kills > 0 && game.kills % 5 === 0;
+      const bossEvery = game.mode === "timed" ? 6 : 5;
+      const isBoss = game.kills > 0 && game.kills % bossEvery === 0;
       enemy.isBoss = isBoss;
       enemy.enrage = false;
       enemy.castSpeedMul = 1;
       const scale = getEnemyPowerScale();
+      const hpModeMul = game.mode === "timed" ? 0.9 : 1;
+      const dmgModeMul = game.mode === "timed" ? 0.86 : 1;
 
       if (isBoss) {
         const boss = choice(BOSSES);
         enemy.name = boss.name;
         enemy.emoji = boss.emoji;
-        enemy.level = Math.floor(game.kills / 5) + 1;
-        enemy.maxHp = Math.floor((200 + game.kills * 24) * boss.hpMul * scale);
-        enemy.damageBase = Math.floor((13 + game.kills * 0.92) * boss.dmgMul * (1 + game.wave * 0.02));
+        enemy.level = Math.floor(game.kills / bossEvery) + 1;
+        enemy.maxHp = Math.floor((200 + game.kills * 24) * boss.hpMul * scale * hpModeMul);
+        enemy.damageBase = Math.floor((13 + game.kills * 0.92) * boss.dmgMul * (1 + game.wave * 0.02) * dmgModeMul);
         enemy.aiTable = { ...boss.ai };
         sfxBoss();
       } else {
@@ -1797,15 +1808,19 @@
         enemy.name = mob.name;
         enemy.emoji = mob.emoji;
         enemy.level = game.kills + 1;
-        enemy.maxHp = Math.floor((90 + game.kills * 12) * mob.hpMul * scale);
-        enemy.damageBase = Math.floor((8 + game.kills * 0.58) * mob.dmgMul * (1 + game.wave * 0.015));
+        enemy.maxHp = Math.floor((90 + game.kills * 12) * mob.hpMul * scale * hpModeMul);
+        enemy.damageBase = Math.floor((8 + game.kills * 0.58) * mob.dmgMul * (1 + game.wave * 0.015) * dmgModeMul);
         enemy.aiTable = { ...mob.ai };
       }
 
       enemy.hp = enemy.maxHp;
       enemy.intent = null;
-      const baseCd = enemy.isBoss ? 1760 : 2200;
-      const progressSpeed = Math.min(840, game.wave * 28);
+      const baseCd = game.mode === "timed"
+        ? (enemy.isBoss ? 1980 : 2420)
+        : (enemy.isBoss ? 1760 : 2200);
+      const progressSpeed = game.mode === "timed"
+        ? Math.min(700, game.wave * 23)
+        : Math.min(840, game.wave * 28);
       enemy.cooldownMax = Math.max(760, (baseCd - progressSpeed) / enemy.castSpeedMul);
       enemy.cooldown = enemy.cooldownMax;
 
