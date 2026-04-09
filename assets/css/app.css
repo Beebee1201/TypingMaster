@@ -572,6 +572,19 @@
       flex-direction: column;
     }
 
+    .leaderboard-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .leaderboard-version-select {
+      min-width: 220px;
+      max-width: 100%;
+    }
+
     .announcement-card {
       width: min(680px, 94vw);
       border: 1px solid rgba(251, 191, 36, 0.28);

@@ -118,10 +118,11 @@
       }
     };
 
+    const GAME_VERSION = "v1.1.4";
     const STORAGE_KEY = "typing_battle_rankings_json_v2";
     const CONFIG_KEY = "typing_battle_rankings_config_v1";
     const ANNOUNCEMENT_STORAGE_KEY = "typing_battle_announcement_seen_v1";
-    const ANNOUNCEMENT_VERSION = "v1.1.3";
+    const ANNOUNCEMENT_VERSION = GAME_VERSION;
     const TIMED_LIMIT_MS = 150000;
     const XP_INITIAL_REQUIREMENT = 90;
     const XP_GROWTH_PER_LEVEL = 30;
@@ -158,6 +159,7 @@
       playerName: "Player",
       mode: "timed",
       boardViewMode: "timed",
+      boardViewVersion: GAME_VERSION,
       timeLeftMs: TIMED_LIMIT_MS,
       remoteSyncState: "local",
       runId: 0
@@ -258,12 +260,21 @@
       };
     }
 
-    function defaultBoard() {
+    function defaultBoardVersionBucket() {
       return {
-        schema: "typing-battle.leaderboard.v1",
         updatedAt: null,
         timed: [],
         endless: []
+      };
+    }
+
+    function defaultBoard() {
+      return {
+        schema: "typing-battle.leaderboard.v2",
+        updatedAt: null,
+        versions: {
+          [GAME_VERSION]: defaultBoardVersionBucket()
+        }
       };
     }
 
@@ -298,27 +309,156 @@
       return cleaned.slice(0, 10);
     }
 
-    function normalizeBoard(raw) {
-      const base = defaultBoard();
+    function normalizeBoardVersionBucket(raw) {
+      const base = defaultBoardVersionBucket();
       if (!raw || typeof raw !== "object") return base;
-      base.schema = typeof raw.schema === "string" ? raw.schema : base.schema;
       base.updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : null;
       base.timed = normalizeBoardRows(raw.timed, "timed");
       base.endless = normalizeBoardRows(raw.endless, "endless");
       return base;
     }
 
+    function ensureBoardVersion(board, version = GAME_VERSION) {
+      if (!board.versions || typeof board.versions !== "object") board.versions = {};
+      if (!board.versions[version]) board.versions[version] = defaultBoardVersionBucket();
+      return board.versions[version];
+    }
+
+    function compareBoardVersions(a, b) {
+      if (a === GAME_VERSION && b !== GAME_VERSION) return -1;
+      if (b === GAME_VERSION && a !== GAME_VERSION) return 1;
+      const aParts = (a.match(/\d+/g) || []).map(Number);
+      const bParts = (b.match(/\d+/g) || []).map(Number);
+      const len = Math.max(aParts.length, bParts.length);
+      for (let i = 0; i < len; i++) {
+        const diff = (bParts[i] || 0) - (aParts[i] || 0);
+        if (diff !== 0) return diff;
+      }
+      return a.localeCompare(b);
+    }
+
+    function getBoardVersionList(board) {
+      return Object.keys(board.versions || {}).sort(compareBoardVersions);
+    }
+
+    function mergeBoardRows(primaryRows, secondaryRows, mode) {
+      const merged = [];
+      const seen = new Set();
+      const allRows = [...(primaryRows || []), ...(secondaryRows || [])];
+
+      allRows.forEach((row) => {
+        if (!row || typeof row !== "object") return;
+        const normalized = normalizeBoardRows([row], mode)[0];
+        if (!normalized) return;
+        const key = [
+          normalized.player,
+          normalized.hero,
+          normalized.mode,
+          normalized.score,
+          normalized.kills,
+          normalized.wave,
+          normalized.level,
+          normalized.endedAt
+        ].join("|");
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push(normalized);
+      });
+
+      merged.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.wave !== a.wave) return b.wave - a.wave;
+        return b.level - a.level;
+      });
+      return merged.slice(0, 10);
+    }
+
+    function mergeBoards(primaryBoard, secondaryBoard) {
+      const merged = defaultBoard();
+      const allVersions = new Set([
+        ...Object.keys((primaryBoard && primaryBoard.versions) || {}),
+        ...Object.keys((secondaryBoard && secondaryBoard.versions) || {}),
+        GAME_VERSION
+      ]);
+
+      merged.updatedAt = [primaryBoard?.updatedAt, secondaryBoard?.updatedAt].find((v) => typeof v === "string") || null;
+      merged.versions = {};
+
+      allVersions.forEach((version) => {
+        const primaryBucket = primaryBoard?.versions?.[version] || defaultBoardVersionBucket();
+        const secondaryBucket = secondaryBoard?.versions?.[version] || defaultBoardVersionBucket();
+        merged.versions[version] = {
+          updatedAt: [primaryBucket.updatedAt, secondaryBucket.updatedAt].find((v) => typeof v === "string") || null,
+          timed: mergeBoardRows(primaryBucket.timed, secondaryBucket.timed, "timed"),
+          endless: mergeBoardRows(primaryBucket.endless, secondaryBucket.endless, "endless")
+        };
+      });
+
+      return merged;
+    }
+
+    function normalizeBoard(raw) {
+      const base = defaultBoard();
+      if (!raw || typeof raw !== "object") return base;
+
+      base.schema = typeof raw.schema === "string" ? raw.schema : base.schema;
+      base.updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : null;
+      base.versions = {};
+
+      if (raw.versions && typeof raw.versions === "object" && !Array.isArray(raw.versions)) {
+        Object.entries(raw.versions).forEach(([version, bucket]) => {
+          const key = typeof version === "string" ? version.trim() : "";
+          if (!key) return;
+          base.versions[key] = normalizeBoardVersionBucket(bucket);
+        });
+      }
+
+      if (Array.isArray(raw.timed) || Array.isArray(raw.endless) || (raw.timed && typeof raw.timed === "object") || (raw.endless && typeof raw.endless === "object")) {
+        base.versions[GAME_VERSION] = normalizeBoardVersionBucket(raw);
+      }
+
+      ensureBoardVersion(base, GAME_VERSION);
+      return base;
+    }
+
     function boardNeedsRepair(raw) {
       if (!raw || typeof raw !== "object") return false;
-      const buckets = [raw.timed, raw.endless];
-      return buckets.some((bucket) => {
-        if (Array.isArray(bucket)) {
-          if (bucket.length > 0 && !(0 in bucket)) return true;
-          return bucket.some((r) => !r || typeof r !== "object");
-        }
-        if (bucket && typeof bucket === "object") return true;
-        return false;
+      if (!raw.versions || typeof raw.versions !== "object" || Array.isArray(raw.versions)) return true;
+
+      const hasCurrentVersion = Object.prototype.hasOwnProperty.call(raw.versions, GAME_VERSION);
+      const versionsNeedRepair = Object.values(raw.versions).some((bucket) => {
+        if (!bucket || typeof bucket !== "object") return true;
+        return [bucket.timed, bucket.endless].some((rows) => {
+          if (Array.isArray(rows)) {
+            if (rows.length > 0 && !(0 in rows)) return true;
+            return rows.some((r) => !r || typeof r !== "object");
+          }
+          if (rows && typeof rows === "object") return true;
+          return false;
+        });
       });
+
+      if (versionsNeedRepair) return true;
+      if (!hasCurrentVersion) return true;
+      return !!raw.timed || !!raw.endless;
+    }
+
+    function syncBoardVersionSelect(board) {
+      const select = $("boardVersionSelect");
+      if (!select) return;
+      const versions = getBoardVersionList(board);
+      if (!versions.includes(game.boardViewVersion)) {
+        game.boardViewVersion = versions.includes(GAME_VERSION) ? GAME_VERSION : (versions[0] || GAME_VERSION);
+      }
+
+      select.innerHTML = "";
+      versions.forEach((version) => {
+        const option = document.createElement("option");
+        option.value = version;
+        option.textContent = version === GAME_VERSION ? `${version}（目前版本）` : version;
+        select.appendChild(option);
+      });
+      select.value = game.boardViewVersion;
     }
 
     function getRemoteHeaders() {
@@ -399,7 +539,8 @@
 
     async function loadBoard() {
       const localRaw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-      let board = normalizeBoard(localRaw);
+      const localBoard = normalizeBoard(localRaw);
+      let board = localBoard;
       game.remoteSyncState = "local";
 
       const remoteFetchUrl = getRemoteFetchUrl();
@@ -410,17 +551,15 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const payload = data && data.record ? data.record : data;
-        board = normalizeBoard(payload);
-        if (payload == null) {
+        const remoteBoard = normalizeBoard(payload);
+        board = mergeBoards(localBoard, remoteBoard);
+
+        const shouldWriteBack = payload == null
+          || boardNeedsRepair(payload)
+          || JSON.stringify(board) !== JSON.stringify(remoteBoard);
+
+        if (shouldWriteBack) {
           // First-time initialization on cloud DB.
-          board.updatedAt = nowIso();
-          await fetch(remoteFetchUrl, {
-            method: "PUT",
-            headers: getRemoteHeaders(),
-            body: JSON.stringify(board)
-          });
-        } else if (boardNeedsRepair(payload)) {
-          // Auto-heal malformed/holey leaderboard payloads from remote.
           board.updatedAt = nowIso();
           await fetch(remoteFetchUrl, {
             method: "PUT",
@@ -431,9 +570,11 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(board));
         game.remoteSyncState = "remote";
         updateConnBadge("ok");
-      } catch (_) {
+      } catch (err) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(board));
         game.remoteSyncState = "fallback";
         updateConnBadge("warn");
+        debugLog("leaderboardSyncFallback", { error: err?.message || String(err) });
       }
 
       return board;
@@ -648,7 +789,9 @@
     async function updateLeaderboard() {
       const list = $("leaderboardList");
       const board = await loadBoard();
-      const modeRows = game.boardViewMode === "timed" ? board.timed : board.endless;
+      syncBoardVersionSelect(board);
+      const versionBucket = ensureBoardVersion(board, game.boardViewVersion);
+      const modeRows = game.boardViewMode === "timed" ? versionBucket.timed : versionBucket.endless;
       list.innerHTML = "";
       if (!modeRows.length) {
         list.innerHTML = "<li>目前尚無紀錄。</li>";
@@ -665,7 +808,8 @@
     async function saveScore() {
       const board = await loadBoard();
       const mode = game.mode;
-      const bucket = mode === "timed" ? board.timed : board.endless;
+      const versionBucket = ensureBoardVersion(board, GAME_VERSION);
+      const bucket = mode === "timed" ? versionBucket.timed : versionBucket.endless;
       bucket.push({
         player: game.playerName,
         hero: game.selectedHero.name,
@@ -681,11 +825,13 @@
         if (b.wave !== a.wave) return b.wave - a.wave;
         return b.level - a.level;
       });
-      if (mode === "timed") board.timed = bucket.slice(0, 10);
-      else board.endless = bucket.slice(0, 10);
+      if (mode === "timed") versionBucket.timed = bucket.slice(0, 10);
+      else versionBucket.endless = bucket.slice(0, 10);
+      versionBucket.updatedAt = nowIso();
 
       await persistBoard(board);
       game.boardViewMode = mode;
+      game.boardViewVersion = GAME_VERSION;
       setBoardChips();
       await updateLeaderboard();
     }
@@ -2039,6 +2185,11 @@
         setBoardChips();
         await updateLeaderboard();
       });
+    });
+
+    $("boardVersionSelect").addEventListener("change", async (e) => {
+      game.boardViewVersion = e.target.value || GAME_VERSION;
+      await updateLeaderboard();
     });
 
     bindSetupOverlay();
