@@ -1,4 +1,4 @@
-﻿const HEROES = [
+  const HEROES = [
       { id: "mage", name: "Arc Mage", emoji: "🧙", desc: "平衡輸出，奧義累積快", hp: 100, dmg: 12, critRate: 0.12, critDamage: 1.72, shield: 50, ultGainMul: 1.15 },
       { id: "knight", name: "Spell Knight", emoji: "🛡️", desc: "高生存，長線穩定", hp: 128, dmg: 10, critRate: 0.1, critDamage: 1.62, shield: 74, ultGainMul: 1.0 },
       { id: "assassin", name: "Rune Assassin", emoji: "⚔️", desc: "高暴擊，連擊成長快", hp: 92, dmg: 13, critRate: 0.18, critDamage: 1.85, shield: 40, ultGainMul: 1.0 }
