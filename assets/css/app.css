@@ -568,6 +568,26 @@
       flex-direction: column;
     }
 
+    .hero-overlay-card {
+      width: min(1320px, 98vw);
+      max-height: min(94vh, 980px);
+      overflow: hidden;
+    }
+
+    .hero-overlay-layout {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.78fr) minmax(360px, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .hero-main-column {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
     .small-muted { color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
 
     .talent-grid {
@@ -606,7 +626,7 @@
     .hero-talent-layout {
       margin-top: 10px;
       display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
+      grid-template-columns: 1fr 0.9fr;
       gap: 10px;
       align-items: stretch;
     }
@@ -637,7 +657,80 @@
       padding: 10px;
       height: 100%;
       max-height: none;
+      overflow: visible;
+    }
+
+    .hero-pool-preview {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 12px;
+      min-height: 0;
+      height: 100%;
       overflow-y: auto;
+    }
+
+    .hero-pool-title {
+      font-weight: 800;
+      font-size: 1rem;
+      margin-bottom: 6px;
+    }
+
+    .hero-pool-hero {
+      color: #dbeafe;
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+    }
+
+    .hero-pool-passive {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.55;
+      margin-bottom: 10px;
+    }
+
+    .hero-pool-note {
+      color: rgba(236, 243, 255, 0.62);
+      font-size: 0.78rem;
+      line-height: 1.45;
+      margin-bottom: 10px;
+    }
+
+    .hero-pool-group + .hero-pool-group {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .hero-pool-group-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .hero-pool-group-meta {
+      color: rgba(236, 243, 255, 0.58);
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .hero-pool-chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .hero-pool-chip {
+      border-radius: 999px;
+      padding: 4px 9px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.07);
+      color: #eef6ff;
+      font-size: 0.78rem;
+      letter-spacing: 0.2px;
     }
 
     .hero-talent-branch + .hero-talent-branch { margin-top: 10px; }
@@ -716,6 +809,7 @@
       .status-grid { grid-template-columns: repeat(3, 1fr); }
       .talent-grid { grid-template-columns: 1fr; }
       .setup-grid { grid-template-columns: 1fr; }
+      .hero-overlay-layout { grid-template-columns: 1fr; }
       .hero-preview-grid { grid-template-columns: 1fr; }
       .hero-talent-layout { grid-template-columns: 1fr; }
     }

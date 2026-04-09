@@ -96,7 +96,7 @@
       Fire：穩定輸出，Bolt：爆發，Slash：快攻，Heal：回血，Guard：護盾。<br>
       每 5 隻會出 Boss；按 Esc 可暫停。限時模式為 2:30，選技能時會停錶。
     </div>
-    <div class="version-tag">Version v1.1.1</div>
+    <div class="version-tag">Version v1.1.2</div>
   </div>
 
   <div id="setupOverlay" class="overlay show">
@@ -107,7 +107,7 @@
       <div class="setup-grid">
         <div>
           <label class="small-muted" for="playerNameInput">玩家名稱</label>
-          <input id="playerNameInput" class="input-dark" type="text" maxlength="20" placeholder="例如 Rin" />
+          <input id="playerNameInput" class="input-dark" type="text" maxlength="20" placeholder="例如 Siyeon" />
         </div>
         <div>
           <div class="small-muted">模式</div>
@@ -127,19 +127,24 @@
   </div>
 
   <div id="heroOverlay" class="overlay">
-    <div class="overlay-card">
+    <div class="overlay-card hero-overlay-card">
       <h3>選擇英雄</h3>
       <div class="small-muted">戰鬥中不能更換英雄。天賦也請在這裡先配置。</div>
-      <div id="characterSelect" class="hero-preview-grid"></div>
-      <div class="hero-talent-wrap">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <div id="heroTalentSummary" class="small-muted">天賦點數：0 / 6</div>
-          <button id="resetTalentPresetBtn" class="btn btn-sm btn-outline-light">重置天賦</button>
+      <div class="hero-overlay-layout">
+        <div class="hero-main-column">
+          <div id="characterSelect" class="hero-preview-grid"></div>
+          <div class="hero-talent-wrap">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div id="heroTalentSummary" class="small-muted">天賦點數：0 / 6</div>
+              <button id="resetTalentPresetBtn" class="btn btn-sm btn-outline-light">重置天賦</button>
+            </div>
+            <div class="hero-talent-layout">
+              <div id="heroTalentConfig" class="hero-talent-grid"></div>
+              <div id="heroTalentEffects" class="hero-talent-effects"></div>
+            </div>
+          </div>
         </div>
-        <div class="hero-talent-layout">
-          <div id="heroTalentConfig" class="hero-talent-grid"></div>
-          <div id="heroTalentEffects" class="hero-talent-effects"></div>
-        </div>
+        <div id="heroPoolPreview" class="hero-pool-preview"></div>
       </div>
       <div class="d-flex justify-content-end mt-3">
         <button id="closeHeroOverlayBtn" class="btn btn-outline-light">關閉</button>

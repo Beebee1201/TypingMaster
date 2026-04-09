@@ -1,7 +1,7 @@
   const HEROES = [
-      { id: "mage", name: "Arc Mage", emoji: "🧙", desc: "平衡輸出，奧義累積快", hp: 100, dmg: 12, critRate: 0.12, critDamage: 1.72, shield: 50, ultGainMul: 1.15 },
-      { id: "knight", name: "Spell Knight", emoji: "🛡️", desc: "高生存，長線穩定", hp: 128, dmg: 10, critRate: 0.1, critDamage: 1.62, shield: 74, ultGainMul: 1.0 },
-      { id: "assassin", name: "Rune Assassin", emoji: "⚔️", desc: "高暴擊，連擊成長快", hp: 92, dmg: 13, critRate: 0.18, critDamage: 1.85, shield: 40, ultGainMul: 1.0 }
+      { id: "mage", name: "Arc Mage", emoji: "🧙", desc: "奧義循環快，爆發集中在大招", hp: 100, dmg: 12, critRate: 0.12, critDamage: 1.72, shield: 50, ultGainMul: 1.15 },
+      { id: "knight", name: "Spell Knight", emoji: "🛡️", desc: "護盾與回復兼備，續戰能力強", hp: 128, dmg: 10, critRate: 0.1, critDamage: 1.62, shield: 74, ultGainMul: 1.0 },
+      { id: "assassin", name: "Rune Assassin", emoji: "⚔️", desc: "連擊越高，暴擊傷害越兇", hp: 92, dmg: 13, critRate: 0.18, critDamage: 1.85, shield: 40, ultGainMul: 1.0 }
     ];
 
     const SPELL_GROUPS = {
@@ -12,6 +12,16 @@
       guard: ["guard", "aegis", "shield", "wall", "ward", "barrier"],
       burst: ["aegisbreak", "shieldnova", "bulwarkburst"],
       ultimate: ["meteor", "cataclysm", "supernova"]
+    };
+
+    const SPELL_TYPE_LABELS = {
+      fire: "Fire",
+      bolt: "Bolt",
+      slash: "Slash",
+      heal: "Heal",
+      guard: "Guard",
+      burst: "Burst",
+      ultimate: "Ultimate"
     };
 
     const HERO_WORD_POOLS = {
@@ -70,7 +80,7 @@
           { name: "狂戰 I", desc: "+2 基礎傷害" },
           { name: "狂戰 II", desc: "+8% 暴擊率" },
           { name: "狂戰 III", desc: "+30% 暴擊傷害" },
-          { name: "狂戰 IV", desc: "連擊成長再 +1；非敵人造成斷連時受最大 HP 5% 反噬" }
+          { name: "狂戰 IV", desc: "每次連擊獲得 +5% 暴擊率；非敵人造成斷連時清空此加成並受最大 HP 5% 反噬" }
         ]
       },
       arcane: {
@@ -93,18 +103,18 @@
       }
     };
 
-    const HERO_UNIQUE_SKILLS = {
+    const HERO_PASSIVES = {
       mage: {
-        normal: "Arc Overload: 雷系附加追擊閃電",
-        ultimate: "Astral Cataclysm: 流星強化、段數更多"
+        name: "奧術聚流",
+        desc: "奧義累積增加 15%，施放奧義時暴擊機率以兩倍計算。"
       },
       knight: {
-        normal: "Fortress Guard: 防禦時額外護盾並小量回血",
-        ultimate: "Aegis Judgment: 奧義同時給護盾與回復"
+        name: "聖盾加護",
+        desc: "施放護盾技能時附帶回血；施放奧義時依攻擊力獲得護盾與回血。"
       },
       assassin: {
-        normal: "Shadow Combo: 斬擊暴擊更高且追擊更容易",
-        ultimate: "Phantom Execution: 高爆發多段斬擊"
+        name: "致命連舞",
+        desc: "每次連擊獲得 7.5% 暴擊傷害。"
       }
     };
 
@@ -162,6 +172,8 @@
       damageReduction: 0,
       sustainBoostTier: 0,
       furyRecoilOnComboBreak: false,
+      furyComboCritRateBonus: 0,
+      furyComboCritRateEnabled: false,
       arcaneKillUltBonus: 0,
       hasShieldBurstSkill: false,
       level: 1,
@@ -606,12 +618,15 @@
       player.damageReduction = 0;
       player.sustainBoostTier = 0;
       player.furyRecoilOnComboBreak = false;
+      player.furyComboCritRateBonus = 0;
+      player.furyComboCritRateEnabled = false;
       player.arcaneKillUltBonus = 0;
       player.hasShieldBurstSkill = false;
       $("playerChar").textContent = hero.emoji;
       document.querySelectorAll(".char-option").forEach((el) => {
         el.classList.toggle("active", el.dataset.id === hero.id);
       });
+      renderHeroLoadoutPreview();
       updateUI();
     }
 
@@ -619,7 +634,7 @@
       const box = $("characterSelect");
       box.innerHTML = "";
       HEROES.forEach((hero) => {
-        const unique = HERO_UNIQUE_SKILLS[hero.id];
+        const passive = HERO_PASSIVES[hero.id];
         const card = document.createElement("div");
         card.className = `char-option${hero.id === game.selectedHero.id ? " active" : ""}`;
         card.dataset.id = hero.id;
@@ -629,8 +644,8 @@
           <div class="char-desc">${hero.desc}</div>
           <div class="char-desc">暴擊率 ${Math.floor(hero.critRate * 100)}% / 暴擊傷害 ${Math.floor(hero.critDamage * 100)}%</div>
           <div class="char-unique">
-            <div>一般：${unique ? unique.normal : "無"}</div>
-            <div>奧義：${unique ? unique.ultimate : "無"}</div>
+            <div>被動：${passive ? passive.name : "無"}</div>
+            <div>${passive ? passive.desc : "無"}</div>
           </div>
         `;
         card.onclick = () => {
@@ -639,6 +654,7 @@
         };
         box.appendChild(card);
       });
+      renderHeroLoadoutPreview();
     }
 
     function setModeButtons() {
@@ -654,8 +670,24 @@
       $("endlessBoardChip").classList.toggle("active", !timed);
     }
 
-    function getCritRate() { return clamp(player.critRateBase + game.combo * 0.01 + (game.fever > 0 ? 0.08 : 0), 0, 0.75); }
-    function getCritDamage() { return clamp(player.critDamageBase + player.critDamageBonus, 1.2, 4); }
+    function getCurrentAttackPower() {
+      return player.baseDamage + Math.floor(game.combo * (1.45 + game.comboScaleBonus));
+    }
+
+    function getCritRate() {
+      return clamp(
+        player.critRateBase
+        + game.combo * 0.01
+        + player.furyComboCritRateBonus
+        + (game.fever > 0 ? 0.08 : 0),
+        0,
+        0.75
+      );
+    }
+    function getCritDamage() {
+      const assassinComboBonus = game.selectedHero.id === "assassin" ? game.combo * 0.075 : 0;
+      return clamp(player.critDamageBase + player.critDamageBonus + assassinComboBonus, 1.2, 6);
+    }
     function getFeverTriggerCombo() { return Math.max(5, game.feverTriggerCombo); }
     function getSustainMultiplier() {
       if (player.sustainBoostTier <= 0) return 1;
@@ -665,6 +697,60 @@
       const base = SPELL_GROUPS[type] || [];
       const heroExtra = (HERO_WORD_POOLS[game.selectedHero.id] && HERO_WORD_POOLS[game.selectedHero.id][type]) || [];
       return base.concat(heroExtra);
+    }
+
+    function getPreviewSpellTypes() {
+      const types = ["fire", "bolt", "slash", "heal", "guard", "ultimate"];
+      if (game.talentTreeLevels.guardian >= 4) types.splice(types.length - 1, 0, "burst");
+      return types;
+    }
+
+    function getPreviewTypeNote(type) {
+      if (type === "heal") return "戰鬥中生命未滿時才會加入輪替。";
+      if (type === "burst") return "守護 IV 解鎖，戰鬥中有護盾時才可能出現。";
+      if (type === "ultimate") return "奧義條滿後按 Space 展開大招詞牌。";
+      return "基礎牌池，會依戰鬥狀態進入輪替。";
+    }
+
+    function renderHeroLoadoutPreview() {
+      const panel = $("heroPoolPreview");
+      if (!panel) return;
+
+      const hero = game.selectedHero;
+      const passive = HERO_PASSIVES[hero.id];
+      const types = getPreviewSpellTypes();
+      const groupsHtml = types.map((type) => {
+        const words = getWordPool(type);
+        const chips = words.map((word) => `<span class="hero-pool-chip">${word}</span>`).join("");
+        return `
+          <section class="hero-pool-group">
+            <div class="hero-pool-group-title">
+              <span>${SPELL_TYPE_LABELS[type] || type}</span>
+              <span class="hero-pool-group-meta">${words.length} 張詞牌</span>
+            </div>
+            <div class="hero-pool-note">${getPreviewTypeNote(type)}</div>
+            <div class="hero-pool-chip-list">${chips}</div>
+          </section>
+        `;
+      }).join("");
+
+      panel.innerHTML = `
+        <div class="hero-pool-title">牌池側欄</div>
+        <div class="hero-pool-hero">${hero.emoji} ${hero.name}</div>
+        <div class="hero-pool-passive">被動：${passive ? `${passive.name}。${passive.desc}` : "無"}</div>
+        <div class="hero-pool-note">此處顯示目前英雄與已配置天賦可持有的完整牌池。條件型牌種會在說明中標示。</div>
+        ${groupsHtml}
+      `;
+      syncHeroPoolPreviewHeight();
+    }
+
+    function syncHeroPoolPreviewHeight() {
+      const panel = $("heroPoolPreview");
+      const mainColumn = document.querySelector(".hero-main-column");
+      if (!panel || !mainColumn) return;
+      requestAnimationFrame(() => {
+        panel.style.height = `${mainColumn.offsetHeight}px`;
+      });
     }
 
     function chooseSkillType() {
@@ -755,7 +841,7 @@
       $("score").textContent = game.score;
       $("kills").textContent = game.kills;
       $("wave").textContent = game.wave;
-      $("damageValue").textContent = `${player.baseDamage + Math.floor(game.combo * (1.45 + game.comboScaleBonus))}${game.fever > 0 ? "🔥" : ""}`;
+      $("damageValue").textContent = `${getCurrentAttackPower()}${game.fever > 0 ? "🔥" : ""}`;
       $("critValue").textContent = `${Math.floor(getCritRate() * 100)}% / ${Math.floor(getCritDamage() * 100)}%`;
 
       $("enemyName").textContent = enemy.isBoss ? `Boss | ${enemy.name}` : enemy.name;
@@ -784,6 +870,7 @@
       const hadCombo = game.combo > 0;
       if (hadCombo && reason) setMessage(reason);
       if (hadCombo && cause !== "enemy" && player.furyRecoilOnComboBreak) {
+        player.furyComboCritRateBonus = 0;
         const recoil = Math.max(1, Math.floor(player.maxHp * 0.05));
         player.hp = clamp(player.hp - recoil, 0, player.maxHp);
         floatText($("playerChar"), `反噬 -${recoil}`, "damage-blue");
@@ -830,8 +917,8 @@
       if (furyLv >= 2) player.critRateBase += 0.08;
       if (furyLv >= 3) player.critDamageBonus += 0.30;
       if (furyLv >= 4) {
-        game.comboScaleBonus += 1;
         player.furyRecoilOnComboBreak = true;
+        player.furyComboCritRateEnabled = true;
       }
 
       if (arcaneLv >= 1) player.ultGainMul += 0.12;
@@ -903,6 +990,7 @@
         `;
         effects.appendChild(side);
       });
+      renderHeroLoadoutPreview();
     }
 
     function continueUpgradeFlowOrResume() {
@@ -1009,10 +1097,10 @@
       }
     }
 
-    function calcDamage(base, skillCritScale = 1) {
+    function calcDamage(base, skillCritScale = 1, critRateScale = 1) {
       let dmg = base + Math.floor(game.combo * (1.45 + game.comboScaleBonus));
       if (game.fever > 0) dmg = Math.floor(dmg * 1.5);
-      const isCrit = Math.random() < getCritRate();
+      const isCrit = Math.random() < clamp(getCritRate() * critRateScale, 0, 1);
       if (isCrit) dmg = Math.floor(dmg * getCritDamage() * skillCritScale);
       return { damage: dmg, isCrit };
     }
@@ -1059,6 +1147,7 @@
       if (!game.prompt || game.over || game.waitingSpawn) return;
       const { type, word } = game.prompt;
       const heroId = game.selectedHero.id;
+      const attackPower = getCurrentAttackPower();
       let scoreGain = 8;
       let critResult = false;
       animateChar("playerChar", "attack-forward");
@@ -1075,45 +1164,31 @@
 
       if (type === "bolt") {
         spawnLightning("enemyChar");
-        const r = calcDamage(player.baseDamage + 10 + (heroId === "mage" ? 4 : 0), heroId === "mage" ? 1.18 : 1.1);
+        const r = calcDamage(player.baseDamage + 10, 1.1);
         damageEnemy(r.damage, r.isCrit);
         critResult = r.isCrit;
         player.ult += 18 * player.ultGainMul;
         scoreGain = r.damage + 4;
-        if (heroId === "mage") {
-          setTimeout(() => {
-            if (game.over || enemy.hp <= 0) return;
-            spawnLightning("enemyChar");
-            const extra = calcDamage(player.baseDamage + 5, 0.9);
-            damageEnemy(extra.damage, extra.isCrit);
-            updateUI();
-            if (enemy.hp <= 0) onEnemyDefeated();
-          }, 120);
-          setMessage(`${word.toUpperCase()} 觸發 Arc Overload 追擊閃電。`);
-        } else {
-          setMessage(`${word.toUpperCase()} 雷擊爆發。`);
-        }
+        setMessage(`${word.toUpperCase()} 雷擊爆發。`);
       }
 
       if (type === "slash") {
         spawnSlash("playerChar", "enemyChar");
-        const first = calcDamage(player.baseDamage + 4 + (heroId === "assassin" ? 3 : 0), heroId === "assassin" ? 1.12 : 1.0);
+        const first = calcDamage(player.baseDamage + 4, 1.0);
         damageEnemy(first.damage, first.isCrit);
         critResult = first.isCrit;
         player.ult += 14 * player.ultGainMul;
         scoreGain = first.damage;
-        const followUpChance = heroId === "assassin" ? 0.55 : 0.35;
+        const followUpChance = 0.35;
         if (Math.random() < followUpChance) {
           setTimeout(() => {
             if (game.over || enemy.hp <= 0) return;
-            const second = calcDamage(8 + Math.floor(player.level / 4) + (heroId === "assassin" ? 2 : 0), heroId === "assassin" ? 1.0 : 0.9);
+            const second = calcDamage(8 + Math.floor(player.level / 4), 0.9);
             damageEnemy(second.damage, second.isCrit);
             updateUI();
             if (enemy.hp <= 0) onEnemyDefeated();
           }, 120);
-          setMessage(heroId === "assassin"
-            ? `${word.toUpperCase()} 觸發 Shadow Combo 追擊。`
-            : `${word.toUpperCase()} 觸發追擊。`);
+          setMessage(`${word.toUpperCase()} 觸發追擊。`);
         } else {
           setMessage(`${word.toUpperCase()} 斬擊命中。`);
         }
@@ -1127,14 +1202,14 @@
       }
 
       if (type === "guard") {
-        addShield(18 + Math.floor(game.combo * 1.35) + (heroId === "knight" ? 10 : 0));
+        addShield(18 + Math.floor(game.combo * 1.35));
         if (heroId === "knight") {
-          healPlayer(0.08, 0);
+          healPlayer(0, Math.max(6, Math.floor(attackPower * 0.45)));
         }
         player.ult += 8 * player.ultGainMul;
         scoreGain = 10;
         setMessage(heroId === "knight"
-          ? `${word.toUpperCase()} 啟動 Fortress Guard（護盾+回血）。`
+          ? `${word.toUpperCase()} 啟動聖盾加護（護盾+回血）。`
           : `${word.toUpperCase()} 建立護盾。`);
       }
 
@@ -1152,12 +1227,10 @@
 
       if (type === "ultimate") {
         sfxUltimate();
-        const meteorCount = heroId === "mage"
-          ? (enemy.isBoss ? 8 : 6)
-          : (enemy.isBoss ? 6 : 4);
+        const meteorCount = enemy.isBoss ? 6 : 4;
         spawnMeteorStorm("enemyChar", meteorCount);
         player.ult = 0;
-        scoreGain = heroId === "assassin" ? 96 : 86;
+        scoreGain = 86;
         if (heroId === "mage") setMessage(`${word.toUpperCase()} 啟動 Astral Cataclysm。`);
         else if (heroId === "knight") setMessage(`${word.toUpperCase()} 啟動 Aegis Judgment。`);
         else if (heroId === "assassin") setMessage(`${word.toUpperCase()} 啟動 Phantom Execution。`);
@@ -1165,19 +1238,14 @@
         setTimeout(() => {
           if (game.over) return;
           let total = 0;
-          const hits = heroId === "assassin"
-            ? (enemy.isBoss ? 5 : 4)
-            : heroId === "mage"
-              ? (enemy.isBoss ? 5 : 4)
-              : (enemy.isBoss ? 4 : 3);
+          const hits = enemy.isBoss ? 4 : 3;
           for (let i = 0; i < hits; i++) {
-            const base = player.baseDamage + 18 + (heroId === "assassin" ? 4 : 0) + (heroId === "mage" ? 2 : 0);
-            const critMul = heroId === "assassin" ? 1.16 : 1.08;
-            total += calcDamage(base, critMul).damage;
+            const critRateScale = heroId === "mage" ? 2 : 1;
+            total += calcDamage(player.baseDamage + 18, 1.08, critRateScale).damage;
           }
           if (heroId === "knight") {
-            addShield(18 + Math.floor(player.level * 0.8));
-            healPlayer(0.12, 0);
+            addShield(Math.max(20, Math.floor(attackPower * 2.2)));
+            healPlayer(0, Math.max(12, Math.floor(attackPower * 1.4)));
           }
           damageEnemy(total, true);
           updateUI();
@@ -1192,6 +1260,9 @@
       player.ult = clamp(player.ult, 0, 100);
       game.score += scoreGain + (critResult ? 8 : 0);
       game.combo += 1;
+      if (player.furyComboCritRateEnabled) {
+        player.furyComboCritRateBonus = clamp(player.furyComboCritRateBonus + 0.05, 0, 1);
+      }
       if (game.combo > game.maxCombo) game.maxCombo = game.combo;
       if (game.combo >= getFeverTriggerCombo() && game.fever <= 0) {
         game.fever = game.feverDurationBaseMs;
@@ -1679,6 +1750,7 @@
     $("openHeroMenuBtn").addEventListener("click", () => {
       renderHeroTalentConfig();
       $("heroOverlay").classList.add("show");
+      syncHeroPoolPreviewHeight();
     });
     $("closeHeroOverlayBtn").addEventListener("click", () => {
       $("heroOverlay").classList.remove("show");
@@ -1720,3 +1792,4 @@
     resetGame();
     updateLeaderboard();
     $("playerNameInput").value = game.playerName;
+    window.addEventListener("resize", syncHeroPoolPreviewHeight);
