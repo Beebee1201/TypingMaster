@@ -1,0 +1,209 @@
+﻿
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Typing Battle Arena Ultimate</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="assets/css/app.css" />
+</head>
+<body>
+  <div id="gameWrap" class="game-wrap">
+    <div class="top-title">
+      <h1>Typing Battle Arena Ultimate</h1>
+      <p>打字施法、衝分挑戰。支援限時模式與無盡模式獨立排行榜。</p>
+    </div>
+
+    <div class="main-menu-row">
+      <button id="openHeroMenuBtn" class="btn btn-outline-info">英雄選擇</button>
+      <button id="openLeaderboardMenuBtn" class="btn btn-outline-warning">排行榜 / 同步</button>
+    </div>
+
+    <div class="battlefield">
+      <div id="effectLayer" class="effect-layer"></div>
+
+      <div class="fighter-area">
+        <div id="playerDisplayName" class="fighter-name">玩家</div>
+        <div id="playerStatus" class="sub-label">準備開始</div>
+
+        <div class="bar-label-row"><span>HP</span><span id="playerHpText">100 / 100</span></div>
+        <div class="bar-outer"><div id="playerHpBar" class="bar-inner hp-bar"></div></div>
+
+        <div class="bar-label-row"><span>讀條 / 施法</span><span id="playerCastText">0%</span></div>
+        <div class="bar-outer"><div id="playerCastBar" class="bar-inner cast-bar" style="width:0%"></div></div>
+
+        <div class="bar-label-row"><span>護盾</span><span id="playerShieldText">0</span></div>
+        <div class="bar-outer"><div id="playerShieldBar" class="bar-inner shield-bar" style="width:0%"></div></div>
+
+        <div class="bar-label-row"><span>奧義</span><span id="playerUltText">0 / 100</span></div>
+        <div class="bar-outer"><div id="playerUltBar" class="bar-inner ult-bar" style="width:0%"></div></div>
+
+        <div class="bar-label-row"><span>經驗</span><span id="playerXpText">0 / 100</span></div>
+        <div class="bar-outer"><div id="playerXpBar" class="bar-inner xp-bar" style="width:0%"></div></div>
+
+        <div id="typingBox" class="typing-box">---</div>
+        <div id="feverBanner" style="min-height:34px"></div>
+
+        <div class="character-wrap">
+          <div id="playerChar" class="character player-char">🧙</div>
+        </div>
+      </div>
+
+      <div class="fighter-area">
+        <div id="enemyName" class="fighter-name">敵人</div>
+        <div id="enemyStatus" class="sub-label">等待開戰</div>
+
+        <div class="bar-label-row"><span>HP</span><span id="enemyHpText">100 / 100</span></div>
+        <div class="bar-outer"><div id="enemyHpBar" class="bar-inner hp-bar"></div></div>
+
+        <div class="bar-label-row"><span>讀條 / 意圖</span><span id="enemyCastText">0%</span></div>
+        <div class="bar-outer"><div id="enemyCastBar" class="bar-inner cast-bar" style="width:0%"></div></div>
+
+        <div class="character-wrap">
+          <div id="enemyChar" class="character npc-char">👾</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="battle-timer-wrap">
+      <div class="bar-label-row"><span>計時模式倒數</span><span id="timeText">02:30</span></div>
+      <div class="bar-outer"><div id="timeBar" class="bar-inner time-bar" style="width:100%"></div></div>
+    </div>
+
+    <div class="status-grid">
+      <div class="panel-box"><div class="panel-label">等級</div><div id="level" class="panel-value">1</div></div>
+      <div class="panel-box"><div class="panel-label">連擊</div><div id="combo" class="panel-value">0</div></div>
+      <div class="panel-box"><div class="panel-label">最大連擊</div><div id="maxCombo" class="panel-value">0</div></div>
+      <div class="panel-box"><div class="panel-label">分數</div><div id="score" class="panel-value">0</div></div>
+      <div class="panel-box"><div class="panel-label">擊殺</div><div id="kills" class="panel-value">0</div></div>
+      <div class="panel-box"><div class="panel-label">波次</div><div id="wave" class="panel-value">1</div></div>
+      <div class="panel-box"><div class="panel-label">傷害</div><div id="damageValue" class="panel-value">12</div></div>
+      <div class="panel-box"><div class="panel-label">暴擊率</div><div id="critValue" class="panel-value">12%</div></div>
+      <div class="panel-box"><div class="panel-label">模式</div><div id="modeValue" class="panel-value">限時</div></div>
+    </div>
+
+    <div id="messageBox" class="message-box">先輸入玩家名稱並選擇模式後開始。</div>
+
+    <div class="controls">
+      <button id="setupBtn" class="btn btn-primary">玩家設定</button>
+      <button id="startBtn" class="btn btn-success">開始戰鬥</button>
+      <button id="pauseBtn" class="btn btn-warning">暫停</button>
+      <button id="soundBtn" class="btn btn-info">音效：開</button>
+    </div>
+
+    <div class="tip-list">
+      Fire：穩定輸出，Bolt：爆發，Slash：快攻，Heal：回血，Guard：護盾。<br>
+      每 5 隻會出 Boss；按 Esc 可暫停。限時模式為 2:30，選技能時會停錶。
+    </div>
+    <div class="version-tag">Version v1.0.2</div>
+  </div>
+
+  <div id="setupOverlay" class="overlay show">
+    <div class="overlay-card">
+      <h3>進場設定</h3>
+      <div class="small-muted mt-2">輸入玩家名稱、選擇模式，排行榜會按模式分開記錄，並同步到 Firebase。</div>
+
+      <div class="setup-grid">
+        <div>
+          <label class="small-muted" for="playerNameInput">玩家名稱</label>
+          <input id="playerNameInput" class="input-dark" type="text" maxlength="20" placeholder="例如 Rin" />
+        </div>
+        <div>
+          <div class="small-muted">模式</div>
+          <div class="mode-select">
+            <button id="timedModeBtn" class="mode-btn active" data-mode="timed">限時模式<small>2:30 內衝分</small></button>
+            <button id="endlessModeBtn" class="mode-btn" data-mode="endless">無盡模式<small>不限時間無限成長</small></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
+        <button id="saveSetupBtn" class="btn btn-success">儲存設定</button>
+        <button id="closeSetupBtn" class="btn btn-outline-light">關閉</button>
+        <span id="connBadge" class="conn-badge">目前使用本機 JSON</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="heroOverlay" class="overlay">
+    <div class="overlay-card">
+      <h3>選擇英雄</h3>
+      <div class="small-muted">戰鬥中不能更換英雄。天賦也請在這裡先配置。</div>
+      <div id="characterSelect" class="hero-preview-grid"></div>
+      <div class="hero-talent-wrap">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div id="heroTalentSummary" class="small-muted">天賦點數：0 / 6</div>
+          <button id="resetTalentPresetBtn" class="btn btn-sm btn-outline-light">重置天賦</button>
+        </div>
+        <div class="hero-talent-layout">
+          <div id="heroTalentConfig" class="hero-talent-grid"></div>
+          <div id="heroTalentEffects" class="hero-talent-effects"></div>
+        </div>
+      </div>
+      <div class="d-flex justify-content-end mt-3">
+        <button id="closeHeroOverlayBtn" class="btn btn-outline-light">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="leaderboardOverlay" class="overlay">
+    <div class="overlay-card">
+      <h3>排行榜</h3>
+      <div class="small-muted">按下主選單「排行榜 / 同步」會自動同步最新資料。</div>
+      <div class="mode-tabs mt-2">
+        <div id="timedBoardChip" class="mode-chip active" data-board-mode="timed">限時模式</div>
+        <div id="endlessBoardChip" class="mode-chip" data-board-mode="endless">無盡模式</div>
+      </div>
+      <ol id="leaderboardList" class="leaderboard-list"></ol>
+      <div class="small-muted mt-2">排行榜以 JSON 結構儲存，並同步至 Firebase。</div>
+      <div class="d-flex justify-content-end mt-3">
+        <button id="closeLeaderboardOverlayBtn" class="btn btn-outline-light">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="talentOverlay" class="overlay">
+    <div class="overlay-card">
+      <h3>等級提升</h3>
+      <div class="small-muted">選擇一個技能。此時遊戲與限時倒數都會暫停。</div>
+      <div id="talentGrid" class="talent-grid"></div>
+    </div>
+  </div>
+
+  <div id="pauseOverlay" class="overlay">
+    <div class="overlay-card text-center">
+      <h3>暫停中</h3>
+      <p class="small-muted mt-2">按 Esc 或點擊按鈕繼續。</p>
+      <button id="resumeBtn" class="btn btn-success">繼續</button>
+    </div>
+  </div>
+
+    <script src="assets/js/app.js"></script>
+  
+  <script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyBBPK-caXIpTY7U88sZoc7EoevGMxfhpew",
+    authDomain: "typing-master-6ece2.firebaseapp.com",
+    projectId: "typing-master-6ece2",
+    storageBucket: "typing-master-6ece2.firebasestorage.app",
+    messagingSenderId: "1034854192146",
+    appId: "1:1034854192146:web:e82a2241276cae479874cb",
+    measurementId: "G-K1ZB3S8VTN"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
+</body>
+</html>
+
