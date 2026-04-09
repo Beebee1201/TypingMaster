@@ -572,6 +572,8 @@
       width: min(1320px, 98vw);
       max-height: min(94vh, 980px);
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
 
     .hero-overlay-layout {
@@ -580,12 +582,17 @@
       grid-template-columns: minmax(0, 1.78fr) minmax(360px, 1fr);
       gap: 14px;
       align-items: stretch;
+      min-height: 0;
+      flex: 1;
     }
 
     .hero-main-column {
       min-width: 0;
+      min-height: 0;
       display: flex;
       flex-direction: column;
+      overflow-y: auto;
+      padding-right: 6px;
     }
 
     .small-muted { color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
@@ -717,10 +724,47 @@
       white-space: nowrap;
     }
 
+    .hero-pool-effect,
+    .hero-pool-formula {
+      margin-bottom: 8px;
+      font-size: 0.79rem;
+      line-height: 1.5;
+      color: rgba(236, 243, 255, 0.82);
+    }
+
+    .hero-pool-effect span,
+    .hero-pool-formula span {
+      display: inline-block;
+      min-width: 34px;
+      margin-right: 8px;
+      color: #fde68a;
+      font-weight: 700;
+    }
+
+    .hero-pool-formula code {
+      display: inline-block;
+      white-space: normal;
+      color: #bfdbfe;
+      font-size: 0.75rem;
+      line-height: 1.55;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 8px;
+      padding: 5px 8px;
+    }
+
     .hero-pool-chip-list {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
+    }
+
+    .hero-pool-subtitle {
+      margin: 8px 0 6px;
+      color: #fde68a;
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.3px;
     }
 
     .hero-pool-chip {
@@ -731,6 +775,12 @@
       color: #eef6ff;
       font-size: 0.78rem;
       letter-spacing: 0.2px;
+    }
+
+    .hero-pool-chip-fever {
+      border-color: rgba(251, 191, 36, 0.28);
+      background: rgba(245, 158, 11, 0.14);
+      color: #fff3c4;
     }
 
     .hero-talent-branch + .hero-talent-branch { margin-top: 10px; }

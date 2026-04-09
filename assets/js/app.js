@@ -10,9 +10,10 @@
       slash: ["slash", "dash", "blade", "fang", "cleave", "cut"],
       heal: ["heal", "mend", "renew", "bloom", "vital", "cure"],
       guard: ["guard", "aegis", "shield", "wall", "ward", "barrier"],
-      burst: ["aegisbreak", "shieldnova", "bulwarkburst"],
       ultimate: ["meteor", "cataclysm", "supernova"]
     };
+
+    const FEVER_FIRE_WORDS = ["ash", "ray", "sun", "hex", "pyr", "sol"];
 
     const SPELL_TYPE_LABELS = {
       fire: "Fire",
@@ -20,7 +21,6 @@
       slash: "Slash",
       heal: "Heal",
       guard: "Guard",
-      burst: "Burst",
       ultimate: "Ultimate"
     };
 
@@ -88,8 +88,8 @@
         nodes: [
           { name: "祕法 I", desc: "奧義獲取 +12%" },
           { name: "祕法 II", desc: "FEVER 啟動門檻 -1 連擊" },
-          { name: "祕法 III", desc: "FEVER 持續時間 +4 秒" },
-          { name: "祕法 IV", desc: "每擊倒一個敵人獲得 20 奧義" }
+          { name: "祕法 III", desc: "每施放兩次奧義，有 50% 機率進入 FEVER" },
+          { name: "祕法 IV", desc: "進入 FEVER 時只會出現專用 Fire 三字詞組" }
         ]
       },
       guardian: {
@@ -98,7 +98,7 @@
           { name: "守護 I", desc: "獲得 +20 最大 HP" },
           { name: "守護 II", desc: "受到傷害 -5%" },
           { name: "守護 III", desc: "治療與護盾 +15%，生命低於 30% 時改為 +30%" },
-          { name: "守護 IV", desc: "解鎖技能：消耗全部護盾，造成護盾*2.5 + 基礎傷害" }
+          { name: "守護 IV", desc: "施放奧義後，獲得一次抵擋特殊斷連攻擊的機會" }
         ]
       }
     };
@@ -175,7 +175,10 @@
       furyComboCritRateBonus: 0,
       furyComboCritRateEnabled: false,
       arcaneKillUltBonus: 0,
-      hasShieldBurstSkill: false,
+      arcaneUltFeverCounter: 0,
+      arcaneUltFeverEnabled: false,
+      arcaneFeverWordsEnabled: false,
+      guardianSpecialBlockReady: false,
       level: 1,
       xp: 0,
       xpToNext: XP_INITIAL_REQUIREMENT
@@ -621,7 +624,10 @@
       player.furyComboCritRateBonus = 0;
       player.furyComboCritRateEnabled = false;
       player.arcaneKillUltBonus = 0;
-      player.hasShieldBurstSkill = false;
+      player.arcaneUltFeverCounter = 0;
+      player.arcaneUltFeverEnabled = false;
+      player.arcaneFeverWordsEnabled = false;
+      player.guardianSpecialBlockReady = false;
       $("playerChar").textContent = hero.emoji;
       document.querySelectorAll(".char-option").forEach((el) => {
         el.classList.toggle("active", el.dataset.id === hero.id);
@@ -677,7 +683,6 @@
     function getCritRate() {
       return clamp(
         player.critRateBase
-        + game.combo * 0.01
         + player.furyComboCritRateBonus
         + (game.fever > 0 ? 0.08 : 0),
         0,
@@ -694,22 +699,102 @@
       return (player.hp / player.maxHp) < 0.3 ? 1.3 : 1.15;
     }
     function getWordPool(type) {
+      if (type === "fire" && game.fever > 0 && player.arcaneFeverWordsEnabled) {
+        return [...FEVER_FIRE_WORDS];
+      }
       const base = SPELL_GROUPS[type] || [];
       const heroExtra = (HERO_WORD_POOLS[game.selectedHero.id] && HERO_WORD_POOLS[game.selectedHero.id][type]) || [];
       return base.concat(heroExtra);
     }
 
+    function isArcaneFeverWordMode() {
+      return game.fever > 0 && player.arcaneFeverWordsEnabled;
+    }
+
+    function hasArcaneUltFeverTalent() {
+      return (game.talentTreeLevels.arcane || 0) >= 3;
+    }
+
+    function hasArcaneFeverWordTalent() {
+      return (game.talentTreeLevels.arcane || 0) >= 4;
+    }
+
     function getPreviewSpellTypes() {
-      const types = ["fire", "bolt", "slash", "heal", "guard", "ultimate"];
-      if (game.talentTreeLevels.guardian >= 4) types.splice(types.length - 1, 0, "burst");
-      return types;
+      return ["fire", "bolt", "slash", "heal", "guard", "ultimate"];
     }
 
     function getPreviewTypeNote(type) {
       if (type === "heal") return "戰鬥中生命未滿時才會加入輪替。";
-      if (type === "burst") return "守護 IV 解鎖，戰鬥中有護盾時才可能出現。";
-      if (type === "ultimate") return "奧義條滿後按 Space 展開大招詞牌。";
+      if (type === "ultimate") {
+        return hasArcaneUltFeverTalent()
+          ? "奧義條滿後按 Space 展開大招詞牌；每施放兩次奧義有 50% 機率進入 FEVER。"
+          : "奧義條滿後按 Space 展開大招詞牌。";
+      }
+      if (type === "fire" && hasArcaneFeverWordTalent()) {
+        return "平時為一般 Fire 牌池；進入 FEVER 後會改成專用三字 Fire 詞組。";
+      }
       return "基礎牌池，會依戰鬥狀態進入輪替。";
+    }
+
+    function getPreviewTypeDetail(type) {
+      const heroId = game.selectedHero.id;
+      if (type === "fire") {
+        return {
+          effect: hasArcaneFeverWordTalent()
+            ? "FEVER 專用 Fire 詞組，固定只會出三字火焰詞。"
+            : "穩定單體輸出，命中後累積奧義。",
+          formula: "傷害 = calcDamage(基礎攻擊 + 6, 1.0)"
+        };
+      }
+      if (type === "bolt") {
+        return {
+          effect: "高倍率雷擊，偏爆發型單體技能，命中後累積較多奧義。",
+          formula: "傷害 = calcDamage(基礎攻擊 + 10, 1.1)"
+        };
+      }
+      if (type === "slash") {
+        return {
+          effect: "快速斬擊，35% 機率觸發一次追擊。",
+          formula: "主擊 = calcDamage(基礎攻擊 + 4, 1.0)；追擊 = calcDamage(8 + floor(等級 / 4), 0.9)"
+        };
+      }
+      if (type === "heal") {
+        return {
+          effect: heroId === "knight"
+            ? "回復生命；守護系會再放大治療倍率。"
+            : "回復生命；守護系會再放大治療倍率。",
+          formula: "回復 = floor((最大HP * 0.18 + floor(combo * 1.2)) * sustainMultiplier)"
+        };
+      }
+      if (type === "guard") {
+        return {
+          effect: heroId === "knight"
+            ? "獲得護盾，且因騎士被動附帶回血。"
+            : "獲得護盾；守護系會再放大護盾倍率。",
+          formula: heroId === "knight"
+            ? "護盾 = floor((18 + floor(combo * 1.35)) * sustainMultiplier)；回血 = floor((0 + max(6, floor(目前攻擊力 * 0.45))) * sustainMultiplier)"
+            : "護盾 = floor((18 + floor(combo * 1.35)) * sustainMultiplier)"
+        };
+      }
+      if (type === "ultimate") {
+        return {
+          effect: heroId === "mage"
+            ? "多段奧義輸出；法師被動讓奧義暴擊率以兩倍計算。"
+            : heroId === "knight"
+              ? "多段奧義輸出；騎士被動另外給護盾與回血。"
+              : "多段奧義輸出；會吃到刺客連擊暴傷被動。",
+          formula: heroId === "knight"
+            ? "總傷害 = hits 次 calcDamage(基礎攻擊 + 18, 1.08, critRateScale)；額外護盾 = floor(max(20, floor(目前攻擊力 * 2.2)) * sustainMultiplier)；額外回血 = floor(max(12, floor(目前攻擊力 * 1.4)) * sustainMultiplier)"
+            : heroId === "mage"
+              ? "總傷害 = hits 次 calcDamage(基礎攻擊 + 18, 1.08, 2)；hits = Boss 4 / 一般 3"
+              : "總傷害 = hits 次 calcDamage(基礎攻擊 + 18, 1.08, 1)；hits = Boss 4 / 一般 3"
+        };
+      }
+
+      return {
+        effect: "依目前設定產生對應效果。",
+        formula: "公式依實際技能邏輯計算"
+      };
     }
 
     function renderHeroLoadoutPreview() {
@@ -721,7 +806,14 @@
       const types = getPreviewSpellTypes();
       const groupsHtml = types.map((type) => {
         const words = getWordPool(type);
+        const detail = getPreviewTypeDetail(type);
         const chips = words.map((word) => `<span class="hero-pool-chip">${word}</span>`).join("");
+        const feverChips = type === "fire" && hasArcaneFeverWordTalent()
+          ? `
+            <div class="hero-pool-subtitle">FEVER 詞組</div>
+            <div class="hero-pool-chip-list">${FEVER_FIRE_WORDS.map((word) => `<span class="hero-pool-chip hero-pool-chip-fever">${word}</span>`).join("")}</div>
+          `
+          : "";
         return `
           <section class="hero-pool-group">
             <div class="hero-pool-group-title">
@@ -729,6 +821,9 @@
               <span class="hero-pool-group-meta">${words.length} 張詞牌</span>
             </div>
             <div class="hero-pool-note">${getPreviewTypeNote(type)}</div>
+            <div class="hero-pool-effect"><span>效果</span>${detail.effect}</div>
+            <div class="hero-pool-formula"><span>公式</span><code>${detail.formula}</code></div>
+            ${feverChips}
             <div class="hero-pool-chip-list">${chips}</div>
           </section>
         `;
@@ -753,7 +848,24 @@
       });
     }
 
+    function startFever(message = "FEVER MODE 啟動，傷害與暴擊率上升。") {
+      game.fever = game.feverDurationBaseMs;
+      setMessage(message);
+      if (
+        game.started
+        && !game.over
+        && !game.waitingSpawn
+        && !game.waitingTalent
+        && !game.paused
+        && (!game.prompt || game.prompt.type !== "ultimate")
+      ) {
+        generatePrompt();
+      }
+      updateUI();
+    }
+
     function chooseSkillType() {
+      if (isArcaneFeverWordMode()) return "fire";
       const heroId = game.selectedHero.id;
       const pool = ["fire", "fire", "slash", "slash", "bolt", "bolt", "guard", "fire", "slash"];
 
@@ -761,8 +873,6 @@
       if (player.hp < player.maxHp) pool.push("heal");
       if (player.hp <= player.maxHp * 0.45) pool.push("heal", "heal");
       if (player.shield <= 8) pool.push("guard");
-      if (player.hasShieldBurstSkill && player.shield >= 12) pool.push("burst");
-      if (player.hasShieldBurstSkill && player.shield >= 28) pool.push("burst");
 
       if (heroId === "mage") pool.push("bolt");
       if (heroId === "knight") pool.push("guard");
@@ -882,6 +992,15 @@
       updateUI();
     }
 
+    function consumeGuardianSpecialBlock(skillLabel = "") {
+      if (!player.guardianSpecialBlockReady) return false;
+      player.guardianSpecialBlockReady = false;
+      floatText($("playerChar"), "抵擋", "shield-cyan");
+      setMessage(skillLabel ? `守護 IV 抵擋了 ${skillLabel} 的斷連效果。` : "守護 IV 抵擋了特殊斷連效果。");
+      updateUI();
+      return true;
+    }
+
     function applyTalent(id) {
       if (id === "dmgUp") player.baseDamage += 3;
       if (id === "critUp") player.critRateBase += 0.06;
@@ -923,13 +1042,13 @@
 
       if (arcaneLv >= 1) player.ultGainMul += 0.12;
       if (arcaneLv >= 2) game.feverTriggerCombo -= 1;
-      if (arcaneLv >= 3) game.feverDurationBaseMs += 4000;
-      if (arcaneLv >= 4) player.arcaneKillUltBonus = 20;
+      if (arcaneLv >= 3) player.arcaneUltFeverEnabled = true;
+      if (arcaneLv >= 4) player.arcaneFeverWordsEnabled = true;
 
       if (guardianLv >= 1) player.maxHp += 20;
       if (guardianLv >= 2) player.damageReduction = clamp(player.damageReduction + 0.05, 0, 0.45);
       if (guardianLv >= 3) player.sustainBoostTier = 1;
-      if (guardianLv >= 4) player.hasShieldBurstSkill = true;
+      if (guardianLv >= 4) player.guardianSpecialBlockReady = false;
     }
 
     function changeTalentPreset(branch, delta) {
@@ -1213,18 +1332,6 @@
           : `${word.toUpperCase()} 建立護盾。`);
       }
 
-      if (type === "burst") {
-        const shieldSpent = player.shield;
-        const dmg = Math.floor(shieldSpent * 2.5 + player.baseDamage);
-        player.shield = 0;
-        spawnSlash("playerChar", "enemyChar");
-        spawnBurstAt($("enemyChar"), "meteor-impact");
-        damageEnemy(dmg, false);
-        scoreGain = dmg;
-        player.ult += 12 * player.ultGainMul;
-        setMessage(`${word.toUpperCase()} 轉盾為刃，造成 ${dmg} 傷害。`);
-      }
-
       if (type === "ultimate") {
         sfxUltimate();
         const meteorCount = enemy.isBoss ? 6 : 4;
@@ -1247,6 +1354,15 @@
             addShield(Math.max(20, Math.floor(attackPower * 2.2)));
             healPlayer(0, Math.max(12, Math.floor(attackPower * 1.4)));
           }
+          if ((game.talentTreeLevels.guardian || 0) >= 4) {
+            player.guardianSpecialBlockReady = true;
+          }
+          if (player.arcaneUltFeverEnabled) {
+            player.arcaneUltFeverCounter += 1;
+            if (player.arcaneUltFeverCounter % 2 === 0 && Math.random() < 0.5) {
+              startFever("祕法共鳴引爆，進入 FEVER。");
+            }
+          }
           damageEnemy(total, true);
           updateUI();
           if (enemy.hp <= 0) onEnemyDefeated();
@@ -1265,8 +1381,7 @@
       }
       if (game.combo > game.maxCombo) game.maxCombo = game.combo;
       if (game.combo >= getFeverTriggerCombo() && game.fever <= 0) {
-        game.fever = game.feverDurationBaseMs;
-        setMessage("FEVER MODE 啟動，傷害與暴擊率上升。");
+        startFever();
       }
 
       if (type !== "ultimate") {
@@ -1338,7 +1453,7 @@
           if (game.over) return;
           const dmg = enemy.damageBase + 10 + rand(6) + Math.floor(enemy.level * 1.16);
           damagePlayer(dmg, `${enemy.name} 施放 ${enemy.intent.label}。`);
-          resetCombo("重擊命中，連擊中斷。", "enemy");
+          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("重擊命中，連擊中斷。", "enemy");
           updateUI();
         }, 170);
       }
@@ -1348,7 +1463,7 @@
         setTimeout(() => {
           if (game.over) return;
           damagePlayer(enemy.damageBase + 6 + rand(4), `${enemy.name} 的毒爆命中。`);
-          resetCombo("毒爆讓你斷連。", "enemy");
+          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("毒爆讓你斷連。", "enemy");
           let ticks = enemy.isBoss ? 3 : 3;
           const timer = setInterval(() => {
             if (game.over || ticks <= 0) { clearInterval(timer); return; }
@@ -1369,7 +1484,7 @@
           const heal = Math.floor(dmg * (enemy.isBoss ? 0.42 : 0.38));
           enemy.hp = clamp(enemy.hp + heal, 0, enemy.maxHp);
           floatText($("enemyChar"), `+${heal}`, "heal-green");
-          resetCombo("生命吸取破壞了你的節奏。", "enemy");
+          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("生命吸取破壞了你的節奏。", "enemy");
           updateUI();
         }, 170);
       }
@@ -1380,7 +1495,7 @@
           if (game.over) return;
           applyShieldBreak(enemy.isBoss ? 5 : 4);
           damagePlayer(enemy.damageBase + 5 + rand(4), `${enemy.name} 使用破盾斬。`);
-          resetCombo("護盾被破壞，連擊中斷。", "enemy");
+          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("護盾被破壞，連擊中斷。", "enemy");
           updateUI();
         }, 170);
       }
@@ -1394,7 +1509,7 @@
           player.ult = Math.max(0, player.ult - ultLoss);
           game.typedIndex = 0;
           renderPrompt();
-          resetCombo(`奧義被干擾，損失 ${ultLoss}。`, "enemy");
+          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo(`奧義被干擾，損失 ${ultLoss}。`, "enemy");
           updateUI();
         }, 170);
       }
@@ -1406,7 +1521,7 @@
           if (game.over) return;
           const dmg = enemy.damageBase + 14 + rand(8) + Math.floor(enemy.level * 1.15);
           damagePlayer(dmg, `Boss ${enemy.name} 施放 Apocalypse Rain。`);
-          resetCombo("Boss 大招打碎了連擊。", "enemy");
+          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("Boss 大招打碎了連擊。", "enemy");
           updateUI();
         }, 700);
       }
