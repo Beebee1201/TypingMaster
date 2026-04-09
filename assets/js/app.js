@@ -60,7 +60,7 @@
       { id: "hpUp", name: "Vital Core", desc: "+20 最大 HP 並回復 20" },
       { id: "shieldUp", name: "Barrier Mastery", desc: "+16 最大護盾並補 16" },
       { id: "ultUp", name: "Arcane Battery", desc: "奧義值 +25" },
-      { id: "comboUp", name: "Combo Engine", desc: "連擊傷害成長提升" }
+      { id: "comboUp", name: "Combo Engine", desc: "提升連擊傷害成長" }
     ];
 
     const TALENT_TREES = {
@@ -69,7 +69,7 @@
         nodes: [
           { name: "狂戰 I", desc: "+2 基礎傷害" },
           { name: "狂戰 II", desc: "+8% 暴擊率" },
-          { name: "狂戰 III", desc: "+30% 爆擊傷害" },
+          { name: "狂戰 III", desc: "+30% 暴擊傷害" },
           { name: "狂戰 IV", desc: "連擊成長再 +1；非敵人造成斷連時受最大 HP 5% 反噬" }
         ]
       },
@@ -88,7 +88,7 @@
           { name: "守護 I", desc: "獲得 +20 最大 HP" },
           { name: "守護 II", desc: "受到傷害 -5%" },
           { name: "守護 III", desc: "治療與護盾 +15%，生命低於 30% 時改為 +30%" },
-          { name: "守護 IV", desc: "解鎖技能：消耗全護盾，造成 護盾*2.5 + 基礎傷害" }
+          { name: "守護 IV", desc: "解鎖技能：消耗全部護盾，造成護盾*2.5 + 基礎傷害" }
         ]
       }
     };
@@ -627,7 +627,7 @@
           <div class="char-emoji">${hero.emoji}</div>
           <div class="char-name">${hero.name}</div>
           <div class="char-desc">${hero.desc}</div>
-          <div class="char-desc">暴率 ${Math.floor(hero.critRate * 100)}% / 爆傷 ${Math.floor(hero.critDamage * 100)}%</div>
+          <div class="char-desc">暴擊率 ${Math.floor(hero.critRate * 100)}% / 暴擊傷害 ${Math.floor(hero.critDamage * 100)}%</div>
           <div class="char-unique">
             <div>一般：${unique ? unique.normal : "無"}</div>
             <div>奧義：${unique ? unique.ultimate : "無"}</div>
@@ -668,8 +668,6 @@
     }
 
     function chooseSkillType() {
-      if (player.ult >= 100) return "ultimate";
-
       const heroId = game.selectedHero.id;
       const pool = ["fire", "fire", "slash", "slash", "bolt", "bolt", "guard", "fire", "slash"];
 
@@ -687,6 +685,22 @@
       return choice(pool);
     }
 
+    function isUltimateReady() {
+      return player.ult >= 100 && (!game.prompt || game.prompt.type !== "ultimate");
+    }
+
+    function activateUltimatePrompt() {
+      if (!isUltimateReady()) return false;
+      const word = choice(getWordPool("ultimate"));
+      game.prompt = { type: "ultimate", word };
+      game.typedIndex = 0;
+      renderPrompt();
+      $("playerStatus").textContent = "奧義：ULTIMATE";
+      setMessage("奧義詞牌展開，輸入後施放大招。");
+      updateUI();
+      return true;
+    }
+
     function generatePrompt() {
       const type = chooseSkillType();
       const word = choice(getWordPool(type));
@@ -698,6 +712,8 @@
 
     function renderPrompt() {
       const box = $("typingBox");
+      box.classList.toggle("ult-ready", isUltimateReady());
+      box.classList.toggle("ult-casting", !!game.prompt && game.prompt.type === "ultimate");
       if (!game.prompt) {
         box.textContent = "---";
         return;
@@ -746,7 +762,10 @@
       $("enemyChar").textContent = enemy.emoji;
       $("enemyChar").classList.toggle("boss-aura", enemy.isBoss);
 
-      $("feverBanner").innerHTML = game.fever > 0 ? `<span class="fever-banner">FEVER ${Math.ceil(game.fever / 1000)}s</span>` : "";
+      const bannerItems = [];
+      if (game.fever > 0) bannerItems.push(`<span class="fever-banner">FEVER ${Math.ceil(game.fever / 1000)}s</span>`);
+      if (isUltimateReady()) bannerItems.push(`<span class="ult-ready-banner">⚡ 奧義可施放　Space</span>`);
+      $("feverBanner").innerHTML = bannerItems.join(" ");
       $("playerChar").classList.toggle("pulse-fever", game.fever > 0);
       $("soundBtn").textContent = game.soundOn ? "音效：開" : "音效：關";
       $("pauseBtn").textContent = game.paused ? "繼續" : "暫停";
@@ -1554,7 +1573,12 @@
         togglePause();
         return;
       }
-      if (!game.started || game.over || game.waitingSpawn || game.waitingTalent || game.paused || !game.prompt) return;
+      if (!game.started || game.over || game.waitingSpawn || game.waitingTalent || game.paused) return;
+      if (e.code === "Space") {
+        if (activateUltimatePrompt()) e.preventDefault();
+        return;
+      }
+      if (!game.prompt) return;
       const key = e.key.toLowerCase();
       if (!(key.length === 1 && key >= "a" && key <= "z")) return;
       const expected = game.prompt.word[game.typedIndex];
