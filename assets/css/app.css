@@ -552,6 +552,10 @@
 
     .overlay.show { display: flex; }
 
+    .announcement-overlay {
+      z-index: 140;
+    }
+
     .overlay-card {
       width: min(760px, 96vw);
       border-radius: 18px;

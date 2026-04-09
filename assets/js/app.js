@@ -252,10 +252,10 @@
         return;
       }
       overlay.classList.add("show");
-      closeBtn.addEventListener("click", closeAnnouncement);
-      overlay.addEventListener("click", (e) => {
+      closeBtn.onclick = closeAnnouncement;
+      overlay.onclick = (e) => {
         if (e.target === overlay) closeAnnouncement();
-      });
+      };
     }
 
     function defaultBoard() {
