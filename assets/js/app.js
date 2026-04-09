@@ -1,4 +1,4 @@
-  const HEROES = [
+﻿  const HEROES = [
       { id: "mage", name: "Arc Mage", emoji: "🧙", desc: "奧義循環快，爆發集中在大招", hp: 100, dmg: 12, critRate: 0.12, critDamage: 1.72, shield: 50, ultGainMul: 1.15 },
       { id: "knight", name: "Spell Knight", emoji: "🛡️", desc: "護盾與回復兼備，續戰能力強", hp: 128, dmg: 10, critRate: 0.1, critDamage: 1.62, shield: 74, ultGainMul: 1.0 },
       { id: "assassin", name: "Rune Assassin", emoji: "⚔️", desc: "連擊越高，暴擊傷害越兇", hp: 92, dmg: 13, critRate: 0.18, critDamage: 1.85, shield: 40, ultGainMul: 1.0 }
@@ -97,8 +97,8 @@
         nodes: [
           { name: "守護 I", desc: "獲得 +20 最大 HP" },
           { name: "守護 II", desc: "受到傷害 -5%" },
-          { name: "守護 III", desc: "治療與護盾 +15%，生命低於 30% 時改為 +30%" },
-          { name: "守護 IV", desc: "施放奧義後，獲得一次抵擋特殊斷連攻擊的機會" }
+          { name: "守護 III", desc: "施放奧義後，獲得一次抵擋特殊斷連攻擊的機會；抵擋後獲得原傷害 30% 護盾" },
+          { name: "守護 IV", desc: "護盾吸收的傷害有 30% 反傷給敵人，且可爆擊" }
         ]
       }
     };
@@ -110,7 +110,7 @@
       },
       knight: {
         name: "聖盾加護",
-        desc: "施放護盾技能時附帶回血；施放奧義時依攻擊力獲得護盾與回血。"
+        desc: "施放護盾技能時附帶較低量回血；施放奧義時依攻擊力獲得護盾與回血；每次造成傷害的 15% 轉為護盾。"
       },
       assassin: {
         name: "致命連舞",
@@ -120,6 +120,8 @@
 
     const STORAGE_KEY = "typing_battle_rankings_json_v2";
     const CONFIG_KEY = "typing_battle_rankings_config_v1";
+    const ANNOUNCEMENT_STORAGE_KEY = "typing_battle_announcement_seen_v1";
+    const ANNOUNCEMENT_VERSION = "v1.1.3";
     const TIMED_LIMIT_MS = 150000;
     const XP_INITIAL_REQUIREMENT = 90;
     const XP_GROWTH_PER_LEVEL = 30;
@@ -127,6 +129,7 @@
     const FIREBASE_DB_BASE_URL = "https://typing-master-6ece2-default-rtdb.asia-southeast1.firebasedatabase.app/";
     const FIREBASE_LEADERBOARD_PATH = "typing-battle/leaderboard";
     const FIREBASE_DEFAULT_JSON_URL = `${FIREBASE_DB_BASE_URL}${FIREBASE_LEADERBOARD_PATH}.json`;
+    const DEBUG_BATTLE_LOGS = true;
 
     const game = {
       started: false,
@@ -146,8 +149,9 @@
       typedIndex: 0,
       selectedHero: HEROES[0],
       comboScaleBonus: 0,
-      feverTriggerCombo: 8,
+      feverTriggerCombo: 7,
       feverDurationBaseMs: 7000,
+      feverLockedUntilReset: false,
       pendingSkillChoices: 0,
       talentTreeLevels: { fury: 0, arcane: 0, guardian: 0 },
       soundOn: true,
@@ -155,7 +159,8 @@
       mode: "timed",
       boardViewMode: "timed",
       timeLeftMs: TIMED_LIMIT_MS,
-      remoteSyncState: "local"
+      remoteSyncState: "local",
+      runId: 0
     };
 
     const player = {
@@ -179,6 +184,7 @@
       arcaneUltFeverEnabled: false,
       arcaneFeverWordsEnabled: false,
       guardianSpecialBlockReady: false,
+      guardianShieldThornsEnabled: false,
       level: 1,
       xp: 0,
       xpToNext: XP_INITIAL_REQUIREMENT
@@ -209,6 +215,48 @@
     function nowIso() { return new Date().toISOString(); }
     function formatMs(ms) { const t = Math.max(0, Math.floor(ms / 1000)); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; }
     function sanitizeName(name) { const t = (name || "").trim().replace(/\s+/g, " "); return (t || "Player").slice(0, 20); }
+
+    function debugLog(event, payload = {}) {
+      if (!DEBUG_BATTLE_LOGS) return;
+      console.log(`[TypingDebug][run ${game.runId}] ${event}`, {
+        hp: player.hp,
+        shield: player.shield,
+        combo: game.combo,
+        fever: game.fever,
+        timeLeftMs: game.timeLeftMs,
+        enemy: enemy.name,
+        enemyHp: enemy.hp,
+        over: game.over,
+        ...payload
+      });
+    }
+
+    function closeAnnouncement() {
+      const overlay = $("announcementOverlay");
+      if (!overlay) return;
+      if ($("announcementDontShow")?.checked) {
+        localStorage.setItem(ANNOUNCEMENT_STORAGE_KEY, ANNOUNCEMENT_VERSION);
+      }
+      overlay.classList.remove("show");
+    }
+
+    function initAnnouncement() {
+      const overlay = $("announcementOverlay");
+      const closeBtn = $("closeAnnouncementBtn");
+      const title = $("announcementTitle");
+      const seenVersion = localStorage.getItem(ANNOUNCEMENT_STORAGE_KEY);
+      if (title) title.textContent = `${ANNOUNCEMENT_VERSION} 更新公告`;
+      if (!overlay || !closeBtn) return;
+      if (seenVersion === ANNOUNCEMENT_VERSION) {
+        overlay.classList.remove("show");
+        return;
+      }
+      overlay.classList.add("show");
+      closeBtn.addEventListener("click", closeAnnouncement);
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) closeAnnouncement();
+      });
+    }
 
     function defaultBoard() {
       return {
@@ -501,6 +549,41 @@
       layer.appendChild(b);
       setTimeout(() => b.remove(), 650);
     }
+
+    const activeGameTimeouts = new Set();
+    const activeGameIntervals = new Set();
+
+    function clearGameAsyncs() {
+      debugLog("clearGameAsyncs", { timeouts: activeGameTimeouts.size, intervals: activeGameIntervals.size });
+      activeGameTimeouts.forEach((id) => clearTimeout(id));
+      activeGameIntervals.forEach((id) => clearInterval(id));
+      activeGameTimeouts.clear();
+      activeGameIntervals.clear();
+    }
+
+    function scheduleGameTimeout(fn, delay, runId = game.runId) {
+      const id = setTimeout(() => {
+        activeGameTimeouts.delete(id);
+        if (runId !== game.runId) return;
+        fn();
+      }, delay);
+      activeGameTimeouts.add(id);
+      return id;
+    }
+
+    function scheduleGameInterval(fn, delay, runId = game.runId) {
+      const id = setInterval(() => {
+        if (runId !== game.runId) {
+          clearInterval(id);
+          activeGameIntervals.delete(id);
+          return;
+        }
+        fn(id);
+      }, delay);
+      activeGameIntervals.add(id);
+      return id;
+    }
+
     function spawnMeteorStorm(targetId, hitCount = 4) {
       const layer = $("effectLayer");
       const targetEl = $(targetId);
@@ -628,6 +711,7 @@
       player.arcaneUltFeverEnabled = false;
       player.arcaneFeverWordsEnabled = false;
       player.guardianSpecialBlockReady = false;
+      player.guardianShieldThornsEnabled = false;
       $("playerChar").textContent = hero.emoji;
       document.querySelectorAll(".char-option").forEach((el) => {
         el.classList.toggle("active", el.dataset.id === hero.id);
@@ -760,19 +844,17 @@
       }
       if (type === "heal") {
         return {
-          effect: heroId === "knight"
-            ? "回復生命；守護系會再放大治療倍率。"
-            : "回復生命；守護系會再放大治療倍率。",
+          effect: "回復生命並累積奧義值。",
           formula: "回復 = floor((最大HP * 0.18 + floor(combo * 1.2)) * sustainMultiplier)"
         };
       }
       if (type === "guard") {
         return {
           effect: heroId === "knight"
-            ? "獲得護盾，且因騎士被動附帶回血。"
-            : "獲得護盾；守護系會再放大護盾倍率。",
+            ? "獲得護盾並附帶較低量回血；騎士每次造成傷害時，還會把 15% 傷害轉為護盾。"
+            : "獲得護盾。",
           formula: heroId === "knight"
-            ? "護盾 = floor((18 + floor(combo * 1.35)) * sustainMultiplier)；回血 = floor((0 + max(6, floor(目前攻擊力 * 0.45))) * sustainMultiplier)"
+            ? "護盾 = floor((18 + floor(combo * 1.35)) * sustainMultiplier)；回血 = floor(max(4, floor(目前攻擊力 * 0.28)) * sustainMultiplier)；傷害轉盾 = floor(本次傷害 * 0.15)"
             : "護盾 = floor((18 + floor(combo * 1.35)) * sustainMultiplier)"
         };
       }
@@ -781,10 +863,10 @@
           effect: heroId === "mage"
             ? "多段奧義輸出；法師被動讓奧義暴擊率以兩倍計算。"
             : heroId === "knight"
-              ? "多段奧義輸出；騎士被動另外給護盾與回血。"
+              ? "多段奧義輸出；騎士會依攻擊力獲得護盾與回血，守護 III 還會給一次特殊斷連防護。"
               : "多段奧義輸出；會吃到刺客連擊暴傷被動。",
           formula: heroId === "knight"
-            ? "總傷害 = hits 次 calcDamage(基礎攻擊 + 18, 1.08, critRateScale)；額外護盾 = floor(max(20, floor(目前攻擊力 * 2.2)) * sustainMultiplier)；額外回血 = floor(max(12, floor(目前攻擊力 * 1.4)) * sustainMultiplier)"
+            ? "總傷害 = hits 次 calcDamage(基礎攻擊 + 18, 1.08, critRateScale)；額外護盾 = floor(max(18, floor(目前攻擊力 * 1.9)) * sustainMultiplier)；額外回血 = floor(max(8, floor(目前攻擊力 * 0.95)) * sustainMultiplier)"
             : heroId === "mage"
               ? "總傷害 = hits 次 calcDamage(基礎攻擊 + 18, 1.08, 2)；hits = Boss 4 / 一般 3"
               : "總傷害 = hits 次 calcDamage(基礎攻擊 + 18, 1.08, 1)；hits = Boss 4 / 一般 3"
@@ -844,12 +926,18 @@
       const mainColumn = document.querySelector(".hero-main-column");
       if (!panel || !mainColumn) return;
       requestAnimationFrame(() => {
+        if (window.innerWidth <= 980) {
+          panel.style.height = "auto";
+          return;
+        }
         panel.style.height = `${mainColumn.offsetHeight}px`;
       });
     }
 
     function startFever(message = "FEVER MODE 啟動，傷害與暴擊率上升。") {
       game.fever = game.feverDurationBaseMs;
+      game.feverLockedUntilReset = true;
+      debugLog("startFever", { message });
       setMessage(message);
       if (
         game.started
@@ -978,6 +1066,7 @@
 
     function resetCombo(reason = "", cause = "other") {
       const hadCombo = game.combo > 0;
+      debugLog("resetCombo", { reason, cause, hadCombo });
       if (hadCombo && reason) setMessage(reason);
       if (hadCombo && cause !== "enemy" && player.furyRecoilOnComboBreak) {
         player.furyComboCritRateBonus = 0;
@@ -989,14 +1078,20 @@
         }
       }
       game.combo = 0;
+      game.feverLockedUntilReset = false;
       updateUI();
     }
 
-    function consumeGuardianSpecialBlock(skillLabel = "") {
+    function consumeGuardianSpecialBlock(skillLabel = "", preventedDamage = 0) {
       if (!player.guardianSpecialBlockReady) return false;
       player.guardianSpecialBlockReady = false;
+      const shieldGain = Math.max(1, Math.floor(preventedDamage * 0.3));
+      debugLog("consumeGuardianSpecialBlock", { skillLabel, preventedDamage, shieldGain });
       floatText($("playerChar"), "抵擋", "shield-cyan");
-      setMessage(skillLabel ? `守護 IV 抵擋了 ${skillLabel} 的斷連效果。` : "守護 IV 抵擋了特殊斷連效果。");
+      if (shieldGain > 0) addShield(shieldGain);
+      setMessage(skillLabel
+        ? `守護 III 抵擋了 ${skillLabel} 的斷連，並獲得 ${shieldGain} 護盾。`
+        : `守護 III 抵擋了特殊斷連，並獲得 ${shieldGain} 護盾。`);
       updateUI();
       return true;
     }
@@ -1047,8 +1142,8 @@
 
       if (guardianLv >= 1) player.maxHp += 20;
       if (guardianLv >= 2) player.damageReduction = clamp(player.damageReduction + 0.05, 0, 0.45);
-      if (guardianLv >= 3) player.sustainBoostTier = 1;
-      if (guardianLv >= 4) player.guardianSpecialBlockReady = false;
+      if (guardianLv >= 3) player.guardianSpecialBlockReady = false;
+      if (guardianLv >= 4) player.guardianShieldThornsEnabled = true;
     }
 
     function changeTalentPreset(branch, delta) {
@@ -1182,13 +1277,27 @@
       floatText($("playerChar"), `+${gain} 護盾`, "shield-cyan");
     }
 
+    function calcFlatCritDamage(base, critRateScale = 1, critDamageScale = 1) {
+      let dmg = Math.max(0, Math.floor(base));
+      const isCrit = Math.random() < clamp(getCritRate() * critRateScale, 0, 1);
+      if (isCrit) dmg = Math.floor(dmg * getCritDamage() * critDamageScale);
+      return { damage: dmg, isCrit };
+    }
+
     function damagePlayer(amount, sourceText = "") {
+      const hpBefore = player.hp;
+      const shieldBefore = player.shield;
       let remaining = Math.max(1, Math.floor(amount * (1 - player.damageReduction)));
       if (player.shield > 0) {
         const absorbed = Math.min(player.shield, remaining);
         player.shield -= absorbed;
         remaining -= absorbed;
         if (absorbed > 0) floatText($("playerChar"), `格擋 ${absorbed}`, "shield-cyan");
+        if (absorbed > 0 && player.guardianShieldThornsEnabled && !game.over && enemy.hp > 0) {
+          const reflect = calcFlatCritDamage(absorbed * 0.3);
+          damageEnemy(reflect.damage, reflect.isCrit, "guardian-reflect");
+          setMessage(`護盾反震造成 ${reflect.damage} 點反傷${reflect.isCrit ? "，並觸發暴擊" : ""}。`);
+        }
       }
       if (remaining > 0) {
         player.hp = clamp(player.hp - remaining, 0, player.maxHp);
@@ -1197,18 +1306,32 @@
       }
       animateChar("playerChar", "hit");
       shakeScreen();
+      debugLog("damagePlayer", {
+        amount,
+        sourceText,
+        hpBefore,
+        hpAfter: player.hp,
+        shieldBefore,
+        shieldAfter: player.shield,
+        remainingDamage: remaining
+      });
       if (player.hp <= 0) {
         endGame("你被擊倒了");
       } else if (sourceText) {
         setMessage(sourceText);
       }
     }
-    function damageEnemy(amount, isCrit = false) {
+    function damageEnemy(amount, isCrit = false, source = "player") {
+      const enemyHpBefore = enemy.hp;
       enemy.hp = clamp(enemy.hp - amount, 0, enemy.maxHp);
+      debugLog("damageEnemy", { amount, isCrit, source, enemyHpBefore, enemyHpAfter: enemy.hp });
       animateChar("enemyChar", "hit");
       floatText($("enemyChar"), isCrit ? `CRIT -${amount}` : `-${amount}`, isCrit ? "crit-gold" : "damage-red");
       if (isCrit) sfxCrit();
       else sfxHit();
+      if (source === "player" && game.selectedHero.id === "knight" && amount > 0 && !game.over) {
+        addShield(Math.max(1, Math.floor(amount * 0.15)));
+      }
       if (enemy.isBoss && !enemy.enrage && enemy.hp <= enemy.maxHp * 0.3) {
         enemy.enrage = true;
         enemy.castSpeedMul = 1.16;
@@ -1254,7 +1377,7 @@
       giveXp(enemy.isBoss ? 84 : 36);
       tryDropItem();
       setMessage(enemy.isBoss ? `Boss 已擊倒，回復 ${Math.floor(healPct * 100)}% HP。` : `敵人已擊倒，回復 ${Math.floor(healPct * 100)}% HP。`);
-      setTimeout(() => {
+      scheduleGameTimeout(() => {
         if (!game.over) {
           spawnEnemy();
           game.waitingSpawn = false;
@@ -1300,7 +1423,7 @@
         scoreGain = first.damage;
         const followUpChance = 0.35;
         if (Math.random() < followUpChance) {
-          setTimeout(() => {
+          scheduleGameTimeout(() => {
             if (game.over || enemy.hp <= 0) return;
             const second = calcDamage(8 + Math.floor(player.level / 4), 0.9);
             damageEnemy(second.damage, second.isCrit);
@@ -1323,7 +1446,7 @@
       if (type === "guard") {
         addShield(18 + Math.floor(game.combo * 1.35));
         if (heroId === "knight") {
-          healPlayer(0, Math.max(6, Math.floor(attackPower * 0.45)));
+          healPlayer(0, Math.max(4, Math.floor(attackPower * 0.28)));
         }
         player.ult += 8 * player.ultGainMul;
         scoreGain = 10;
@@ -1342,7 +1465,7 @@
         else if (heroId === "knight") setMessage(`${word.toUpperCase()} 啟動 Aegis Judgment。`);
         else if (heroId === "assassin") setMessage(`${word.toUpperCase()} 啟動 Phantom Execution。`);
         else setMessage(`${word.toUpperCase()} 召喚流星雨。`);
-        setTimeout(() => {
+        scheduleGameTimeout(() => {
           if (game.over) return;
           let total = 0;
           const hits = enemy.isBoss ? 4 : 3;
@@ -1351,10 +1474,10 @@
             total += calcDamage(player.baseDamage + 18, 1.08, critRateScale).damage;
           }
           if (heroId === "knight") {
-            addShield(Math.max(20, Math.floor(attackPower * 2.2)));
-            healPlayer(0, Math.max(12, Math.floor(attackPower * 1.4)));
+            addShield(Math.max(18, Math.floor(attackPower * 1.9)));
+            healPlayer(0, Math.max(8, Math.floor(attackPower * 0.95)));
           }
-          if ((game.talentTreeLevels.guardian || 0) >= 4) {
+          if ((game.talentTreeLevels.guardian || 0) >= 3) {
             player.guardianSpecialBlockReady = true;
           }
           if (player.arcaneUltFeverEnabled) {
@@ -1380,7 +1503,7 @@
         player.furyComboCritRateBonus = clamp(player.furyComboCritRateBonus + 0.05, 0, 1);
       }
       if (game.combo > game.maxCombo) game.maxCombo = game.combo;
-      if (game.combo >= getFeverTriggerCombo() && game.fever <= 0) {
+      if (!game.feverLockedUntilReset && game.combo >= getFeverTriggerCombo() && game.fever <= 0) {
         startFever();
       }
 
@@ -1402,7 +1525,7 @@
     function enemyAttackBasic() {
       spawnProjectile("enemyChar", "playerChar", "darkball");
       animateChar("enemyChar", "attack-backward");
-      setTimeout(() => {
+      scheduleGameTimeout(() => {
         if (game.over) return;
         const dmg = enemy.damageBase + rand(5) + Math.floor(enemy.level * 0.78);
         damagePlayer(dmg, `${enemy.name} 使用暗影彈。`);
@@ -1414,11 +1537,11 @@
     function enemyAttackQuick() {
       animateChar("enemyChar", "attack-backward");
       spawnSlash("enemyChar", "playerChar");
-      setTimeout(() => {
+      scheduleGameTimeout(() => {
         if (game.over) return;
         damagePlayer(enemy.damageBase + 2 + rand(4), `${enemy.name} 快速突襲。`);
         resetCombo("快攻打亂了你的節奏。", "enemy");
-        setTimeout(() => {
+        scheduleGameTimeout(() => {
           if (game.over) return;
           damagePlayer(Math.floor((enemy.damageBase + rand(4)) * 0.8), `${enemy.name} 追加第二擊。`);
           updateUI();
@@ -1444,29 +1567,35 @@
     function resolveEnemyIntent() {
       if (!enemy.intent || game.over) return;
       const t = enemy.intent.type;
+      const intentLabel = enemy.intent.label;
       $("enemyChar").classList.remove("charge-glow");
 
       if (t === "heavy") {
         spawnLightning("playerChar");
         animateChar("enemyChar", "attack-backward");
-        setTimeout(() => {
+        scheduleGameTimeout(() => {
           if (game.over) return;
           const dmg = enemy.damageBase + 10 + rand(6) + Math.floor(enemy.level * 1.16);
-          damagePlayer(dmg, `${enemy.name} 施放 ${enemy.intent.label}。`);
-          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("重擊命中，連擊中斷。", "enemy");
+          damagePlayer(dmg, `${enemy.name} 施放 ${intentLabel}。`);
+          if (!consumeGuardianSpecialBlock(intentLabel, dmg)) resetCombo("重擊命中，連擊中斷。", "enemy");
           updateUI();
         }, 170);
       }
 
       if (t === "poison") {
         spawnProjectile("enemyChar", "playerChar", "darkball");
-        setTimeout(() => {
+        scheduleGameTimeout(() => {
           if (game.over) return;
-          damagePlayer(enemy.damageBase + 6 + rand(4), `${enemy.name} 的毒爆命中。`);
-          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("毒爆讓你斷連。", "enemy");
+          const dmg = enemy.damageBase + 6 + rand(4);
+          damagePlayer(dmg, `${enemy.name} 的毒爆命中。`);
+          if (!consumeGuardianSpecialBlock(intentLabel, dmg)) resetCombo("毒爆讓你斷連。", "enemy");
           let ticks = enemy.isBoss ? 3 : 3;
-          const timer = setInterval(() => {
-            if (game.over || ticks <= 0) { clearInterval(timer); return; }
+          scheduleGameInterval((intervalId) => {
+            if (game.over || ticks <= 0) {
+              clearInterval(intervalId);
+              activeGameIntervals.delete(intervalId);
+              return;
+            }
             ticks--;
             damagePlayer(4 + Math.floor(enemy.level * 0.4), "中毒持續掉血。");
             updateUI();
@@ -1477,39 +1606,41 @@
 
       if (t === "drain") {
         spawnProjectile("enemyChar", "playerChar", "darkball");
-        setTimeout(() => {
+        scheduleGameTimeout(() => {
           if (game.over) return;
           const dmg = enemy.damageBase + 7 + rand(5);
           damagePlayer(dmg, `${enemy.name} 吸取你的生命。`);
           const heal = Math.floor(dmg * (enemy.isBoss ? 0.42 : 0.38));
           enemy.hp = clamp(enemy.hp + heal, 0, enemy.maxHp);
           floatText($("enemyChar"), `+${heal}`, "heal-green");
-          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("生命吸取破壞了你的節奏。", "enemy");
+          if (!consumeGuardianSpecialBlock(intentLabel, dmg)) resetCombo("生命吸取破壞了你的節奏。", "enemy");
           updateUI();
         }, 170);
       }
 
       if (t === "break") {
         spawnSlash("enemyChar", "playerChar");
-        setTimeout(() => {
+        scheduleGameTimeout(() => {
           if (game.over) return;
           applyShieldBreak(enemy.isBoss ? 5 : 4);
-          damagePlayer(enemy.damageBase + 5 + rand(4), `${enemy.name} 使用破盾斬。`);
-          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("護盾被破壞，連擊中斷。", "enemy");
+          const dmg = enemy.damageBase + 5 + rand(4);
+          damagePlayer(dmg, `${enemy.name} 使用破盾斬。`);
+          if (!consumeGuardianSpecialBlock(intentLabel, dmg)) resetCombo("護盾被破壞，連擊中斷。", "enemy");
           updateUI();
         }, 170);
       }
 
       if (t === "interrupt") {
         spawnLightning("playerChar");
-        setTimeout(() => {
+        scheduleGameTimeout(() => {
           if (game.over) return;
-          damagePlayer(enemy.damageBase + 3 + rand(4), `${enemy.name} 使用心靈尖刺。`);
+          const dmg = enemy.damageBase + 3 + rand(4);
+          damagePlayer(dmg, `${enemy.name} 使用心靈尖刺。`);
           const ultLoss = 14 + Math.floor(enemy.level * 0.35);
           player.ult = Math.max(0, player.ult - ultLoss);
           game.typedIndex = 0;
           renderPrompt();
-          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo(`奧義被干擾，損失 ${ultLoss}。`, "enemy");
+          if (!consumeGuardianSpecialBlock(intentLabel, dmg)) resetCombo(`奧義被干擾，損失 ${ultLoss}。`, "enemy");
           updateUI();
         }, 170);
       }
@@ -1517,11 +1648,11 @@
       if (t === "bossMeteor") {
         spawnMeteorStorm("playerChar", 5);
         animateChar("enemyChar", "attack-backward");
-        setTimeout(() => {
+        scheduleGameTimeout(() => {
           if (game.over) return;
           const dmg = enemy.damageBase + 14 + rand(8) + Math.floor(enemy.level * 1.15);
           damagePlayer(dmg, `Boss ${enemy.name} 施放 Apocalypse Rain。`);
-          if (!consumeGuardianSpecialBlock(enemy.intent.label)) resetCombo("Boss 大招打碎了連擊。", "enemy");
+          if (!consumeGuardianSpecialBlock(intentLabel, dmg)) resetCombo("Boss 大招打碎了連擊。", "enemy");
           updateUI();
         }, 700);
       }
@@ -1556,6 +1687,7 @@
     function chooseEnemyAction() {
       if (game.over || game.waitingSpawn || enemy.hp <= 0 || game.paused) return;
       const action = weightedPick(adjustedAiTable());
+      debugLog("chooseEnemyAction", { action });
       if (action === "basic") enemyAttackBasic();
       else if (action === "quick") enemyAttackQuick();
       else if (action === "heavy") enemyAttackHeavy();
@@ -1645,6 +1777,8 @@
     function startGame() {
       game.playerName = sanitizeName(game.playerName);
       initAudio();
+      clearGameAsyncs();
+      game.runId += 1;
       game.started = true;
       game.over = false;
       game.paused = false;
@@ -1659,8 +1793,9 @@
       game.prompt = null;
       game.typedIndex = 0;
       game.comboScaleBonus = 0;
-      game.feverTriggerCombo = 8;
+      game.feverTriggerCombo = 7;
       game.feverDurationBaseMs = 7000;
+      game.feverLockedUntilReset = false;
       game.pendingSkillChoices = 0;
       game.timeLeftMs = TIMED_LIMIT_MS;
 
@@ -1673,6 +1808,7 @@
       $("leaderboardOverlay").classList.remove("show");
 
       spawnEnemy();
+      debugLog("startGame", { playerName: game.playerName, hero: game.selectedHero.id, talents: { ...game.talentTreeLevels } });
       setMessage(game.mode === "timed" ? `戰鬥開始，${game.playerName}。限時 2:30！` : `戰鬥開始，${game.playerName}。無盡模式挑戰極限！`);
       updateUI();
 
@@ -1682,6 +1818,8 @@
     }
 
     function resetGame() {
+      clearGameAsyncs();
+      game.runId += 1;
       game.started = false;
       game.over = false;
       game.paused = false;
@@ -1696,8 +1834,9 @@
       game.prompt = null;
       game.typedIndex = 0;
       game.comboScaleBonus = 0;
-      game.feverTriggerCombo = 8;
+      game.feverTriggerCombo = 7;
       game.feverDurationBaseMs = 7000;
+      game.feverLockedUntilReset = false;
       game.pendingSkillChoices = 0;
       game.timeLeftMs = TIMED_LIMIT_MS;
 
@@ -1726,14 +1865,17 @@
       $("heroOverlay").classList.remove("show");
       $("leaderboardOverlay").classList.remove("show");
       setMessage("先輸入玩家名稱並選擇模式後開始。");
+      debugLog("resetGame");
       updateUI();
       cancelAnimationFrame(game.loopId);
     }
 
     async function endGame(reason = "") {
       if (game.over) return;
+      debugLog("endGame", { reason });
       game.over = true;
       game.started = false;
+      clearGameAsyncs();
       $("playerChar").classList.add("char-dead");
       let title = game.mode === "timed" ? "限時模式結束" : "無盡模式結束";
       if (reason) title = `${title}：${reason}`;
@@ -1795,6 +1937,7 @@
         game.timeLeftMs = Math.max(0, game.timeLeftMs - dt);
         if (game.timeLeftMs <= 0) {
           updateUI();
+          debugLog("timeExpired");
           await endGame("時間到");
           return;
         }
@@ -1899,6 +2042,7 @@
     });
 
     bindSetupOverlay();
+    initAnnouncement();
     loadConfig();
     renderHeroSelect();
     renderHeroTalentConfig();
