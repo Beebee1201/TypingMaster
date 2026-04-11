@@ -119,6 +119,7 @@
     };
 
     const GAME_VERSION = "v1.1.4";
+    const GAME_VERSION_KEY = toFirebaseKey(GAME_VERSION);
     const STORAGE_KEY = "typing_battle_rankings_json_v2";
     const CONFIG_KEY = "typing_battle_rankings_config_v1";
     const ANNOUNCEMENT_STORAGE_KEY = "typing_battle_announcement_seen_v1";
@@ -159,9 +160,10 @@
       playerName: "Player",
       mode: "timed",
       boardViewMode: "timed",
-      boardViewVersion: GAME_VERSION,
+      boardViewVersion: GAME_VERSION_KEY,
       timeLeftMs: TIMED_LIMIT_MS,
       remoteSyncState: "local",
+      remoteSyncError: "",
       runId: 0
     };
 
@@ -260,8 +262,20 @@
       };
     }
 
-    function defaultBoardVersionBucket() {
+    function toFirebaseKey(value) {
+      return String(value || "")
+        .trim()
+        .replace(/[.#$/\[\]]/g, "_") || "unknown";
+    }
+
+    function getBoardVersionLabel(versionKey, bucket = null) {
+      if (bucket && typeof bucket.version === "string" && bucket.version.trim()) return bucket.version.trim();
+      return String(versionKey || "").replace(/_/g, ".");
+    }
+
+    function defaultBoardVersionBucket(version = GAME_VERSION) {
       return {
+        version,
         updatedAt: null,
         timed: [],
         endless: []
@@ -273,7 +287,7 @@
         schema: "typing-battle.leaderboard.v2",
         updatedAt: null,
         versions: {
-          [GAME_VERSION]: defaultBoardVersionBucket()
+          [GAME_VERSION_KEY]: defaultBoardVersionBucket(GAME_VERSION)
         }
       };
     }
@@ -309,24 +323,26 @@
       return cleaned.slice(0, 10);
     }
 
-    function normalizeBoardVersionBucket(raw) {
-      const base = defaultBoardVersionBucket();
+    function normalizeBoardVersionBucket(raw, fallbackVersion = GAME_VERSION) {
+      const base = defaultBoardVersionBucket(fallbackVersion);
       if (!raw || typeof raw !== "object") return base;
+      base.version = typeof raw.version === "string" && raw.version.trim() ? raw.version.trim() : fallbackVersion;
       base.updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : null;
       base.timed = normalizeBoardRows(raw.timed, "timed");
       base.endless = normalizeBoardRows(raw.endless, "endless");
       return base;
     }
 
-    function ensureBoardVersion(board, version = GAME_VERSION) {
+    function ensureBoardVersion(board, versionKey = GAME_VERSION_KEY, versionLabel = GAME_VERSION) {
       if (!board.versions || typeof board.versions !== "object") board.versions = {};
-      if (!board.versions[version]) board.versions[version] = defaultBoardVersionBucket();
-      return board.versions[version];
+      const key = toFirebaseKey(versionKey);
+      if (!board.versions[key]) board.versions[key] = defaultBoardVersionBucket(versionLabel);
+      return board.versions[key];
     }
 
     function compareBoardVersions(a, b) {
-      if (a === GAME_VERSION && b !== GAME_VERSION) return -1;
-      if (b === GAME_VERSION && a !== GAME_VERSION) return 1;
+      if (a === GAME_VERSION_KEY && b !== GAME_VERSION_KEY) return -1;
+      if (b === GAME_VERSION_KEY && a !== GAME_VERSION_KEY) return 1;
       const aParts = (a.match(/\d+/g) || []).map(Number);
       const bParts = (b.match(/\d+/g) || []).map(Number);
       const len = Math.max(aParts.length, bParts.length);
@@ -378,16 +394,20 @@
       const allVersions = new Set([
         ...Object.keys((primaryBoard && primaryBoard.versions) || {}),
         ...Object.keys((secondaryBoard && secondaryBoard.versions) || {}),
-        GAME_VERSION
+        GAME_VERSION_KEY
       ]);
 
       merged.updatedAt = [primaryBoard?.updatedAt, secondaryBoard?.updatedAt].find((v) => typeof v === "string") || null;
       merged.versions = {};
 
       allVersions.forEach((version) => {
-        const primaryBucket = primaryBoard?.versions?.[version] || defaultBoardVersionBucket();
-        const secondaryBucket = secondaryBoard?.versions?.[version] || defaultBoardVersionBucket();
+        const primaryExisting = primaryBoard?.versions?.[version];
+        const secondaryExisting = secondaryBoard?.versions?.[version];
+        const label = getBoardVersionLabel(version, primaryExisting || secondaryExisting);
+        const primaryBucket = primaryExisting || defaultBoardVersionBucket(label);
+        const secondaryBucket = secondaryExisting || defaultBoardVersionBucket(label);
         merged.versions[version] = {
+          version: label,
           updatedAt: [primaryBucket.updatedAt, secondaryBucket.updatedAt].find((v) => typeof v === "string") || null,
           timed: mergeBoardRows(primaryBucket.timed, secondaryBucket.timed, "timed"),
           endless: mergeBoardRows(primaryBucket.endless, secondaryBucket.endless, "endless")
@@ -401,7 +421,7 @@
       const base = defaultBoard();
       if (!raw || typeof raw !== "object") return base;
 
-      base.schema = typeof raw.schema === "string" ? raw.schema : base.schema;
+      base.schema = "typing-battle.leaderboard.v2";
       base.updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : null;
       base.versions = {};
 
@@ -409,15 +429,16 @@
         Object.entries(raw.versions).forEach(([version, bucket]) => {
           const key = typeof version === "string" ? version.trim() : "";
           if (!key) return;
-          base.versions[key] = normalizeBoardVersionBucket(bucket);
+          const safeKey = toFirebaseKey(key);
+          base.versions[safeKey] = normalizeBoardVersionBucket(bucket, getBoardVersionLabel(key, bucket));
         });
       }
 
       if (Array.isArray(raw.timed) || Array.isArray(raw.endless) || (raw.timed && typeof raw.timed === "object") || (raw.endless && typeof raw.endless === "object")) {
-        base.versions[GAME_VERSION] = normalizeBoardVersionBucket(raw);
+        base.versions[GAME_VERSION_KEY] = normalizeBoardVersionBucket(raw, GAME_VERSION);
       }
 
-      ensureBoardVersion(base, GAME_VERSION);
+      ensureBoardVersion(base, GAME_VERSION_KEY, GAME_VERSION);
       return base;
     }
 
@@ -425,7 +446,7 @@
       if (!raw || typeof raw !== "object") return false;
       if (!raw.versions || typeof raw.versions !== "object" || Array.isArray(raw.versions)) return true;
 
-      const hasCurrentVersion = Object.prototype.hasOwnProperty.call(raw.versions, GAME_VERSION);
+      const hasCurrentVersion = Object.prototype.hasOwnProperty.call(raw.versions, GAME_VERSION_KEY);
       const versionsNeedRepair = Object.values(raw.versions).some((bucket) => {
         if (!bucket || typeof bucket !== "object") return true;
         return [bucket.timed, bucket.endless].some((rows) => {
@@ -448,17 +469,33 @@
       if (!select) return;
       const versions = getBoardVersionList(board);
       if (!versions.includes(game.boardViewVersion)) {
-        game.boardViewVersion = versions.includes(GAME_VERSION) ? GAME_VERSION : (versions[0] || GAME_VERSION);
+        game.boardViewVersion = versions.includes(GAME_VERSION_KEY) ? GAME_VERSION_KEY : (versions[0] || GAME_VERSION_KEY);
       }
 
       select.innerHTML = "";
       versions.forEach((version) => {
         const option = document.createElement("option");
         option.value = version;
-        option.textContent = version === GAME_VERSION ? `${version}（目前版本）` : version;
+        const label = getBoardVersionLabel(version, board.versions?.[version]);
+        option.textContent = version === GAME_VERSION_KEY ? `${label}（目前版本）` : label;
         select.appendChild(option);
       });
       select.value = game.boardViewVersion;
+    }
+
+    function loadLocalBoard() {
+      try {
+        return normalizeBoard(JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"));
+      } catch (_) {
+        return defaultBoard();
+      }
+    }
+
+    function saveLocalBoard(board) {
+      const normalized = normalizeBoard(board);
+      normalized.updatedAt = nowIso();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+      return normalized;
     }
 
     function getRemoteHeaders() {
@@ -504,16 +541,30 @@
       const badge = $("connBadge");
       badge.classList.remove("ok", "warn");
       if (state === "ok") {
+        game.remoteSyncError = "";
         badge.textContent = "遠端 JSON 連線正常";
         badge.classList.add("ok");
         return;
       }
       if (state === "warn") {
-        badge.textContent = "遠端同步失敗，改用本機 JSON";
+        badge.textContent = game.remoteSyncError
+          ? `遠端同步失敗：${game.remoteSyncError}`
+          : "遠端同步失敗，改用本機 JSON";
         badge.classList.add("warn");
         return;
       }
       badge.textContent = rankingConfig.remoteUrl ? "已設定 Firebase/遠端 JSON" : "目前使用本機 JSON";
+    }
+
+    async function assertRemoteOk(res, action) {
+      if (res.ok) return;
+      let detail = "";
+      try {
+        detail = await res.text();
+      } catch (_) {
+        detail = "";
+      }
+      throw new Error(`${action} HTTP ${res.status}${detail ? ` ${detail.slice(0, 120)}` : ""}`);
     }
 
     function loadConfig() {
@@ -538,8 +589,7 @@
     }
 
     async function loadBoard() {
-      const localRaw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-      const localBoard = normalizeBoard(localRaw);
+      const localBoard = loadLocalBoard();
       let board = localBoard;
       game.remoteSyncState = "local";
 
@@ -561,18 +611,20 @@
         if (shouldWriteBack) {
           // First-time initialization on cloud DB.
           board.updatedAt = nowIso();
-          await fetch(remoteFetchUrl, {
+          const repairRes = await fetch(remoteFetchUrl, {
             method: "PUT",
             headers: getRemoteHeaders(),
             body: JSON.stringify(board)
           });
+          await assertRemoteOk(repairRes, "leaderboard repair");
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(board));
+        saveLocalBoard(board);
         game.remoteSyncState = "remote";
         updateConnBadge("ok");
       } catch (err) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(board));
+        saveLocalBoard(board);
         game.remoteSyncState = "fallback";
+        game.remoteSyncError = err?.message || String(err);
         updateConnBadge("warn");
         debugLog("leaderboardSyncFallback", { error: err?.message || String(err) });
       }
@@ -581,9 +633,7 @@
     }
 
     async function persistBoard(board) {
-      const normalized = normalizeBoard(board);
-      normalized.updatedAt = nowIso();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+      const normalized = saveLocalBoard(board);
 
       const remoteFetchUrl = getRemoteFetchUrl();
       if (!remoteFetchUrl) {
@@ -597,12 +647,14 @@
           headers: getRemoteHeaders(),
           body: JSON.stringify(normalized)
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        await assertRemoteOk(res, "leaderboard persist");
         game.remoteSyncState = "remote";
         updateConnBadge("ok");
-      } catch (_) {
+      } catch (err) {
         game.remoteSyncState = "fallback";
+        game.remoteSyncError = err?.message || String(err);
         updateConnBadge("warn");
+        debugLog("leaderboardPersistFallback", { error: err?.message || String(err) });
       }
     }
 
@@ -790,7 +842,7 @@
       const list = $("leaderboardList");
       const board = await loadBoard();
       syncBoardVersionSelect(board);
-      const versionBucket = ensureBoardVersion(board, game.boardViewVersion);
+      const versionBucket = ensureBoardVersion(board, game.boardViewVersion, getBoardVersionLabel(game.boardViewVersion, board.versions?.[game.boardViewVersion]));
       const modeRows = game.boardViewMode === "timed" ? versionBucket.timed : versionBucket.endless;
       list.innerHTML = "";
       if (!modeRows.length) {
@@ -806,9 +858,9 @@
     }
 
     async function saveScore() {
-      const board = await loadBoard();
+      const board = loadLocalBoard();
       const mode = game.mode;
-      const versionBucket = ensureBoardVersion(board, GAME_VERSION);
+      const versionBucket = ensureBoardVersion(board, GAME_VERSION_KEY, GAME_VERSION);
       const bucket = mode === "timed" ? versionBucket.timed : versionBucket.endless;
       bucket.push({
         player: game.playerName,
@@ -829,10 +881,11 @@
       else versionBucket.endless = bucket.slice(0, 10);
       versionBucket.updatedAt = nowIso();
 
-      await persistBoard(board);
+      saveLocalBoard(board);
       game.boardViewMode = mode;
-      game.boardViewVersion = GAME_VERSION;
+      game.boardViewVersion = GAME_VERSION_KEY;
       setBoardChips();
+      await persistBoard(board);
       await updateLeaderboard();
     }
 
@@ -2109,7 +2162,7 @@
     async function syncLeaderboard() {
       await updateLeaderboard();
       if (game.remoteSyncState === "remote") setMessage("排行榜已與遠端 JSON 同步。");
-      else if (game.remoteSyncState === "fallback") setMessage("遠端同步失敗，改用本機 JSON。");
+      else if (game.remoteSyncState === "fallback") setMessage(game.remoteSyncError ? `遠端同步失敗：${game.remoteSyncError}` : "遠端同步失敗，改用本機 JSON。");
       else setMessage("已讀取本機 JSON 排行榜。");
     }
 
@@ -2188,7 +2241,7 @@
     });
 
     $("boardVersionSelect").addEventListener("change", async (e) => {
-      game.boardViewVersion = e.target.value || GAME_VERSION;
+      game.boardViewVersion = e.target.value || GAME_VERSION_KEY;
       await updateLeaderboard();
     });
 
